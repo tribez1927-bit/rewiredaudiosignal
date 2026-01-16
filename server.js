@@ -1,7 +1,7 @@
 const WebSocket = require('ws');
 
 // Use Render's Environment Port (Critical for deployment)
-const PORT = process.env.PORT || 3535;
+const PORT = process.env.PORT || 8080;
 const wss = new WebSocket.Server({ port: PORT });
 
 const rooms = new Map();
