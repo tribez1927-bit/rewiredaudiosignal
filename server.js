@@ -1,23 +1,17 @@
 const WebSocket = require('ws');
 
-// Use Render's Environment Port (Critical for deployment)
-const PORT = process.env.PORT || 8080;
+// Use Render's Environment Port
+const PORT = process.env.PORT || 3535;
 const wss = new WebSocket.Server({ port: PORT });
 
 const rooms = new Map();
 
-console.log(`[SERVER] Signaling Server v2.3 (Logged) Running on ${PORT}`);
+console.log(`[SERVER] Signaling Server v2.4 (Debug Candidates) Running on ${PORT}`);
 
 wss.on('connection', (ws, req) => {
-    // 1. EXTRACT IP ADDRESS
-    // Render passes the real client IP in 'x-forwarded-for'. 
-    // It can be a list (e.g. "client, proxy1, proxy2"), so we take the first one.
+    // 1. IP Extraction
     let clientIp = req.headers['x-forwarded-for']?.split(',')[0].trim() || req.socket.remoteAddress;
-    
-    // Clean up IPv6 prefix if present (::ffff:)
-    if (clientIp.includes('::ffff:')) {
-        clientIp = clientIp.replace('::ffff:', '');
-    }
+    if (clientIp.includes('::ffff:')) clientIp = clientIp.replace('::ffff:', '');
 
     console.log(`[CONNECTION] New socket connected from: ${clientIp}`);
 
@@ -42,14 +36,10 @@ wss.on('connection', (ws, req) => {
                     rooms.set(myRoom, new Set());
                 }
                 
-                // Store user data directly on the socket
                 ws.clientData = { ws, id: myId, name: myName, role: myRole, ip: clientIp };
                 rooms.get(myRoom).add(ws.clientData);
                 
-                // LOG: Detailed Join Info
                 console.log(`[JOIN] [${clientIp}] User: "${myName}" (ID: ${myId}) | Role: ${myRole} | Room: ${myRoom}`);
-                
-                // Broadcast FULL roster
                 broadcastRoster(myRoom);
             } 
             
@@ -58,10 +48,30 @@ wss.on('connection', (ws, req) => {
                 if (msg.target) {
                     const roomUsers = rooms.get(myRoom);
                     const targetClient = Array.from(roomUsers).find(c => c.id === msg.target);
+                    
                     if (targetClient && targetClient.ws.readyState === WebSocket.OPEN) {
+                        
+                        // --- NEW: LOGGING ICE CANDIDATES & SDP ---
+                        if (msg.type === 'candidate') {
+                            console.log(`\n[ICE CANDIDATE] ${myName} -> ${targetClient.name}`);
+                            // This outputs the exact structure you asked for
+                            console.log(JSON.stringify(msg, null, 2)); 
+                        } 
+                        else if (msg.type === 'offer' || msg.type === 'answer') {
+                            console.log(`\n[${msg.type.toUpperCase()}] ${myName} -> ${targetClient.name}`);
+                            // Logging just the type and target to avoid 50 lines of SDP spam, 
+                            // but enough to know the handshake is working.
+                            console.log(JSON.stringify({ 
+                                type: msg.type, 
+                                target: msg.target, 
+                                sdpSummary: "..." + msg.sdp.substring(0, 50) + "..." 
+                            }, null, 2));
+                        }
+
+                        // Relay the message
                         targetClient.ws.send(JSON.stringify(msg));
-                        // Optional: Log signals (can be spammy, maybe keep commented out unless debugging)
-                        // console.log(`[SIGNAL] [${clientIp}] ${msg.type} -> ${targetClient.name} (${targetClient.ip})`);
+                    } else {
+                        console.warn(`[WARN] Target "${msg.target}" not found or offline.`);
                     }
                 } else {
                     broadcastToRoom(myRoom, msg, ws);
@@ -76,12 +86,9 @@ wss.on('connection', (ws, req) => {
     ws.on('close', () => {
         if (myRoom && rooms.has(myRoom)) {
             const roomUsers = rooms.get(myRoom);
+            if (ws.clientData) roomUsers.delete(ws.clientData);
             
-            if (ws.clientData) {
-                roomUsers.delete(ws.clientData);
-            }
-            
-            console.log(`[LEAVE] [${clientIp}] User: "${myName}" (ID: ${myId}) left Room: ${myRoom}`);
+            console.log(`[LEAVE] [${clientIp}] ${myName} left ${myRoom}`);
             
             if (roomUsers.size === 0) {
                 console.log(`[ROOM] Room empty. Closing: ${myRoom}`);
@@ -89,31 +96,22 @@ wss.on('connection', (ws, req) => {
             } else {
                 broadcastRoster(myRoom);
             }
-        } else {
-             console.log(`[DISCONNECT] [${clientIp}] Socket closed (No room joined)`);
         }
     });
 });
 
 function broadcastRoster(room) {
     if (!rooms.has(room)) return;
-    
     const roomUsers = rooms.get(room);
     const rosterList = Array.from(roomUsers).map(c => ({
-        id: c.id,
-        name: c.name,
+        id: c.id, 
+        name: c.name, 
         role: c.role
     }));
 
-    const message = JSON.stringify({ 
-        type: 'roster-update', 
-        roster: rosterList 
-    });
-
+    const message = JSON.stringify({ type: 'roster-update', roster: rosterList });
     roomUsers.forEach(client => {
-        if (client.ws.readyState === WebSocket.OPEN) {
-            client.ws.send(message);
-        }
+        if (client.ws.readyState === WebSocket.OPEN) client.ws.send(message);
     });
 }
 
