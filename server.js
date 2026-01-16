@@ -1,16 +1,26 @@
-//
-//  server.js
-//  RewiredAudioStreamApp
-//  Multi-Peer Signaling Server (Port 3535)
-//
-
 const WebSocket = require('ws');
-const wss = new WebSocket.Server({ port: 3535 }); // <-- CONFIRMED PORT 3535
+
+// Use Render's Environment Port (Critical for deployment)
+const PORT = process.env.PORT || 3535;
+const wss = new WebSocket.Server({ port: PORT });
+
 const rooms = new Map();
 
-console.log("[SERVER] Signaling Server v2.1 (Multi-Peer) Running on 3535");
+console.log(`[SERVER] Signaling Server v2.3 (Logged) Running on ${PORT}`);
 
-wss.on('connection', ws => {
+wss.on('connection', (ws, req) => {
+    // 1. EXTRACT IP ADDRESS
+    // Render passes the real client IP in 'x-forwarded-for'. 
+    // It can be a list (e.g. "client, proxy1, proxy2"), so we take the first one.
+    let clientIp = req.headers['x-forwarded-for']?.split(',')[0].trim() || req.socket.remoteAddress;
+    
+    // Clean up IPv6 prefix if present (::ffff:)
+    if (clientIp.includes('::ffff:')) {
+        clientIp = clientIp.replace('::ffff:', '');
+    }
+
+    console.log(`[CONNECTION] New socket connected from: ${clientIp}`);
+
     let myRoom = null;
     let myId = null;
     let myName = "Unknown";
@@ -28,67 +38,83 @@ wss.on('connection', ws => {
                 myRole = msg.role || "listener";
                 
                 if (!rooms.has(myRoom)) {
-                    console.log(`[SERVER] Creating Room: ${myRoom}`);
+                    console.log(`[ROOM] [${clientIp}] Creating Room: ${myRoom}`);
                     rooms.set(myRoom, new Set());
                 }
                 
-                ws.clientData = { ws, id: myId, name: myName, role: myRole };
+                // Store user data directly on the socket
+                ws.clientData = { ws, id: myId, name: myName, role: myRole, ip: clientIp };
                 rooms.get(myRoom).add(ws.clientData);
                 
-                console.log(`[SERVER] ${myName} (${myRole}) joined ${myRoom}`);
+                // LOG: Detailed Join Info
+                console.log(`[JOIN] [${clientIp}] User: "${myName}" (ID: ${myId}) | Role: ${myRole} | Room: ${myRoom}`);
                 
-                // 1. Send Roster to NEW user
-                sendRoster(ws, myRoom);
-                
-                // 2. Announce NEW user to others
-                broadcastToRoom(myRoom, {
-                    type: 'user-joined',
-                    id: myId,
-                    name: myName,
-                    role: myRole
-                }, ws); 
+                // Broadcast FULL roster
+                broadcastRoster(myRoom);
             } 
             
             // --- SIGNALING (Targeted Relay) ---
             else if (myRoom && rooms.has(myRoom)) {
                 if (msg.target) {
-                    const targetClient = Array.from(rooms.get(myRoom)).find(c => c.id === msg.target);
+                    const roomUsers = rooms.get(myRoom);
+                    const targetClient = Array.from(roomUsers).find(c => c.id === msg.target);
                     if (targetClient && targetClient.ws.readyState === WebSocket.OPEN) {
                         targetClient.ws.send(JSON.stringify(msg));
+                        // Optional: Log signals (can be spammy, maybe keep commented out unless debugging)
+                        // console.log(`[SIGNAL] [${clientIp}] ${msg.type} -> ${targetClient.name} (${targetClient.ip})`);
                     }
                 } else {
                     broadcastToRoom(myRoom, msg, ws);
                 }
             }
         } catch(e) {
-            console.error("[SERVER] Error parsing message:", e.message);
+            console.error(`[ERROR] [${clientIp}] Error parsing message: ${e.message}`);
         }
     });
 
+    // --- CLEANUP ---
     ws.on('close', () => {
         if (myRoom && rooms.has(myRoom)) {
-            const set = rooms.get(myRoom);
-            if (ws.clientData) set.delete(ws.clientData);
-            console.log(`[SERVER] ${myName} left ${myRoom}`);
+            const roomUsers = rooms.get(myRoom);
             
-            if (set.size === 0) {
-                console.log(`[SERVER] Closing Room: ${myRoom}`);
+            if (ws.clientData) {
+                roomUsers.delete(ws.clientData);
+            }
+            
+            console.log(`[LEAVE] [${clientIp}] User: "${myName}" (ID: ${myId}) left Room: ${myRoom}`);
+            
+            if (roomUsers.size === 0) {
+                console.log(`[ROOM] Room empty. Closing: ${myRoom}`);
                 rooms.delete(myRoom);
             } else {
-                broadcastToRoom(myRoom, { type: 'user-left', id: myId, name: myName }, null);
+                broadcastRoster(myRoom);
             }
+        } else {
+             console.log(`[DISCONNECT] [${clientIp}] Socket closed (No room joined)`);
         }
     });
 });
 
-function sendRoster(ws, room) {
+function broadcastRoster(room) {
     if (!rooms.has(room)) return;
-    const users = Array.from(rooms.get(room)).map(c => ({
+    
+    const roomUsers = rooms.get(room);
+    const rosterList = Array.from(roomUsers).map(c => ({
         id: c.id,
         name: c.name,
         role: c.role
     }));
-    ws.send(JSON.stringify({ type: 'roster-update', roster: users }));
+
+    const message = JSON.stringify({ 
+        type: 'roster-update', 
+        roster: rosterList 
+    });
+
+    roomUsers.forEach(client => {
+        if (client.ws.readyState === WebSocket.OPEN) {
+            client.ws.send(message);
+        }
+    });
 }
 
 function broadcastToRoom(room, msg, excludeWs) {
