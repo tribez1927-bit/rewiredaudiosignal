@@ -1,126 +1,157 @@
+// server.js - Rock Solid Signaling with State Persistence
 const WebSocket = require('ws');
+const port = process.env.PORT || 8080;
+const wss = new WebSocket.Server({ port });
 
-// Use Render's Environment Port
-const PORT = process.env.PORT || 3535;
-const wss = new WebSocket.Server({ port: PORT });
-
+// State Store: Map<roomId, Map<userId, UserObject>>
 const rooms = new Map();
 
-console.log(`[SERVER] Signaling Server v2.4 (Debug Candidates) Running on ${PORT}`);
+wss.on('connection', (ws) => {
+    let currentUser = { id: null, room: null };
+    ws.isAlive = true;
+    
+    // Heartbeat: responding to server pings
+    ws.on('pong', () => { ws.isAlive = true; });
 
-wss.on('connection', (ws, req) => {
-    // 1. IP Extraction
-    let clientIp = req.headers['x-forwarded-for']?.split(',')[0].trim() || req.socket.remoteAddress;
-    if (clientIp.includes('::ffff:')) clientIp = clientIp.replace('::ffff:', '');
+    ws.on('message', (data) => {
+        let msg;
+        try { msg = JSON.parse(data); } catch (e) { return; }
 
-    console.log(`[CONNECTION] New socket connected from: ${clientIp}`);
-
-    let myRoom = null;
-    let myId = null;
-    let myName = "Unknown";
-    let myRole = "listener";
-
-    ws.on('message', message => {
-        try {
-            const msg = JSON.parse(message);
-            
-            // --- JOIN ---
-            if (msg.type === 'join') {
-                myRoom = msg.room;
-                myId = msg.id; 
-                myName = msg.name || "Anonymous";
-                myRole = msg.role || "listener";
+        switch (msg.type) {
+            case 'join':
+                handleJoin(ws, msg, currentUser);
+                break;
                 
-                if (!rooms.has(myRoom)) {
-                    console.log(`[ROOM] [${clientIp}] Creating Room: ${myRoom}`);
-                    rooms.set(myRoom, new Set());
-                }
+            case 'status-update':
+                handleStatusUpdate(currentUser, msg);
+                break;
                 
-                ws.clientData = { ws, id: myId, name: myName, role: myRole, ip: clientIp };
-                rooms.get(myRoom).add(ws.clientData);
+            case 'offer':
+            case 'answer':
+            case 'candidate':
+                // Relay WebRTC signals to the specific target peer
+                // If 'target' is missing (broadcast), send to all except sender
+                relaySignal(currentUser, msg);
+                break;
                 
-                console.log(`[JOIN] [${clientIp}] User: "${myName}" (ID: ${myId}) | Role: ${myRole} | Room: ${myRoom}`);
-                broadcastRoster(myRoom);
-            } 
-            
-            // --- SIGNALING (Targeted Relay) ---
-            else if (myRoom && rooms.has(myRoom)) {
-                if (msg.target) {
-                    const roomUsers = rooms.get(myRoom);
-                    const targetClient = Array.from(roomUsers).find(c => c.id === msg.target);
-                    
-                    if (targetClient && targetClient.ws.readyState === WebSocket.OPEN) {
-                        
-                        // --- NEW: LOGGING ICE CANDIDATES & SDP ---
-                        if (msg.type === 'candidate') {
-                            console.log(`\n[ICE CANDIDATE] ${myName} -> ${targetClient.name}`);
-                            // This outputs the exact structure you asked for
-                            console.log(JSON.stringify(msg, null, 2)); 
-                        } 
-                        else if (msg.type === 'offer' || msg.type === 'answer') {
-                            console.log(`\n[${msg.type.toUpperCase()}] ${myName} -> ${targetClient.name}`);
-                            // Logging just the type and target to avoid 50 lines of SDP spam, 
-                            // but enough to know the handshake is working.
-                            console.log(JSON.stringify({ 
-                                type: msg.type, 
-                                target: msg.target, 
-                                sdpSummary: "..." + msg.sdp.substring(0, 50) + "..." 
-                            }, null, 2));
-                        }
-
-                        // Relay the message
-                        targetClient.ws.send(JSON.stringify(msg));
-                    } else {
-                        console.warn(`[WARN] Target "${msg.target}" not found or offline.`);
-                    }
-                } else {
-                    broadcastToRoom(myRoom, msg, ws);
-                }
-            }
-        } catch(e) {
-            console.error(`[ERROR] [${clientIp}] Error parsing message: ${e.message}`);
+            case 'leave':
+                handleDisconnect(currentUser);
+                break;
         }
     });
 
-    // --- CLEANUP ---
     ws.on('close', () => {
-        if (myRoom && rooms.has(myRoom)) {
-            const roomUsers = rooms.get(myRoom);
-            if (ws.clientData) roomUsers.delete(ws.clientData);
-            
-            console.log(`[LEAVE] [${clientIp}] ${myName} left ${myRoom}`);
-            
-            if (roomUsers.size === 0) {
-                console.log(`[ROOM] Room empty. Closing: ${myRoom}`);
-                rooms.delete(myRoom);
-            } else {
-                broadcastRoster(myRoom);
-            }
-        }
+        handleDisconnect(currentUser);
     });
 });
 
-function broadcastRoster(room) {
-    if (!rooms.has(room)) return;
+function handleJoin(ws, msg, userContext) {
+    const { room, id, name, role, isMicEnabled, isBroadcasting } = msg;
+    userContext.id = id;
+    userContext.room = room;
+
+    if (!rooms.has(room)) rooms.set(room, new Map());
     const roomUsers = rooms.get(room);
-    const rosterList = Array.from(roomUsers).map(c => ({
-        id: c.id, 
-        name: c.name, 
-        role: c.role
+
+    // 1. Store the new user state
+    const userData = { 
+        ws, id, name, role, 
+        isMicEnabled: isMicEnabled ?? true, 
+        isBroadcasting: isBroadcasting ?? false 
+    };
+    roomUsers.set(id, userData);
+
+    // 2. Send FULL ROSTER to the new joiner (Snapshot)
+    const fullRoster = Array.from(roomUsers.values()).map(u => ({
+        id: u.id, name: u.name, role: u.role,
+        isMicEnabled: u.isMicEnabled,
+        isBroadcasting: u.isBroadcasting
+    }));
+    
+    ws.send(JSON.stringify({
+        type: 'roster-update',
+        roster: fullRoster
     }));
 
-    const message = JSON.stringify({ type: 'roster-update', roster: rosterList });
-    roomUsers.forEach(client => {
-        if (client.ws.readyState === WebSocket.OPEN) client.ws.send(message);
+    // 3. Notify OTHERS that a user joined (Incremental Update)
+    broadcastToRoom(room, id, {
+        type: 'user-joined',
+        id, name, role,
+        isMicEnabled: userData.isMicEnabled,
+        isBroadcasting: userData.isBroadcasting
     });
 }
 
-function broadcastToRoom(room, msg, excludeWs) {
-    if (!rooms.has(room)) return;
-    const json = JSON.stringify(msg);
-    rooms.get(room).forEach(client => {
-        if (client.ws !== excludeWs && client.ws.readyState === WebSocket.OPEN) {
-            client.ws.send(json);
-        }
+function handleStatusUpdate(userContext, msg) {
+    const roomUsers = rooms.get(userContext.room);
+    if (!roomUsers || !roomUsers.has(userContext.id)) return;
+
+    const user = roomUsers.get(userContext.id);
+    // Update local state
+    if (msg.isMicEnabled !== undefined) user.isMicEnabled = msg.isMicEnabled;
+    if (msg.isBroadcasting !== undefined) user.isBroadcasting = msg.isBroadcasting;
+
+    // Broadcast update to room
+    broadcastToRoom(userContext.room, userContext.id, {
+        type: 'status-update',
+        id: userContext.id,
+        isMicEnabled: user.isMicEnabled,
+        isBroadcasting: user.isBroadcasting
     });
 }
+
+function handleDisconnect(userContext) {
+    if (!userContext.room || !userContext.id) return;
+    
+    const roomUsers = rooms.get(userContext.room);
+    if (roomUsers) {
+        roomUsers.delete(userContext.id);
+        broadcastToRoom(userContext.room, userContext.id, {
+            type: 'user-left',
+            id: userContext.id
+        });
+        
+        if (roomUsers.size === 0) rooms.delete(userContext.room);
+    }
+    userContext.id = null;
+    userContext.room = null;
+}
+
+function relaySignal(currentUser, msg) {
+    // If the message has a specific 'targetId', send only to them
+    const roomUsers = rooms.get(currentUser.room);
+    if (!roomUsers) return;
+
+    if (msg.targetId) {
+        const target = roomUsers.get(msg.targetId);
+        if (target && target.ws.readyState === WebSocket.OPEN) {
+            target.ws.send(JSON.stringify(msg));
+        }
+    } else {
+        // Fallback: Broadcast to everyone else (for legacy/mesh compatibility)
+        broadcastToRoom(currentUser.room, currentUser.id, msg);
+    }
+}
+
+function broadcastToRoom(roomName, senderId, msg) {
+    const roomUsers = rooms.get(roomName);
+    if (!roomUsers) return;
+
+    const json = JSON.stringify(msg);
+    for (const [id, user] of roomUsers) {
+        if (id !== senderId && user.ws.readyState === WebSocket.OPEN) {
+            user.ws.send(json);
+        }
+    }
+}
+
+// Heartbeat Interval (30s)
+setInterval(() => {
+    wss.clients.forEach((ws) => {
+        if (ws.isAlive === false) return ws.terminate();
+        ws.isAlive = false;
+        ws.ping();
+    });
+}, 30000);
+
+console.log(`Server running on port ${port}`);
