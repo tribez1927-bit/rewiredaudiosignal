@@ -7,7 +7,7 @@
     <style>
         :root { --bg: #0a0a0a; --card: #161616; --accent: #007aff; --text: #ffffff; }
         body { font-family: -apple-system, system-ui; background: var(--bg); color: var(--text); display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; margin: 0; padding: 20px; box-sizing: border-box; }
-        .container { background: var(--card); padding: 30px; border-radius: 24px; text-align: center; width: 100%; max-width: 360px; box-shadow: 0 20px 40px rgba(0,0,0,0.4); border: 1px solid #333; }
+        .container { background: var(--card); padding: 30px; border-radius: 24px; text-align: center; width: 100%; max-width: 360px; box-shadow: 0 20px 40px rgba(0,0,0,0.4); border: 1px solid #333; position: relative; }
         h1 { font-size: 1.1rem; font-weight: 600; margin-bottom: 4px; color: #fff; text-transform: uppercase; letter-spacing: 1px; }
         
         .subtitle { font-size: 0.8rem; color: #888; margin-bottom: 20px; }
@@ -38,6 +38,10 @@
         button:disabled { background: #333; color: #666; }
         button:active { transform: scale(0.98); }
         
+        /* Mobile Play Overlay */
+        #play-overlay { position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.85); border-radius: 24px; display: none; align-items: center; justify-content: center; flex-direction: column; z-index: 100; backdrop-filter: blur(5px); }
+        .play-icon { font-size: 40px; margin-bottom: 10px; }
+        
         #debug-console { width: 100%; max-width: 360px; height: 120px; background: #000; color: #0f0; font-family: monospace; font-size: 10px; padding: 10px; margin-top: 20px; border-radius: 8px; overflow-y: auto; border: 1px solid #333; text-align: left; }
     </style>
 </head>
@@ -46,6 +50,12 @@
 <div class="container">
     <h1>Studio Monitor</h1>
     <div id="subtitle" class="subtitle">Not Connected</div>
+    
+    <div id="play-overlay">
+        <div class="play-icon">▶️</div>
+        <div style="font-weight:bold; margin-bottom:5px;">Tap to Unmute</div>
+        <div style="font-size:0.8rem; color:#aaa;">Audio Ready</div>
+    </div>
     
     <div id="inputs">
         <div class="input-group">
@@ -86,6 +96,8 @@
     const statusLabel = document.getElementById('status');
     const subtitleLabel = document.getElementById('subtitle');
     const rosterList = document.getElementById('roster-list');
+    const playOverlay = document.getElementById('play-overlay');
+    const audioEl = document.getElementById('remote-audio');
 
     // 2. Safe ID Generator
     function generateId() {
@@ -117,6 +129,7 @@
     log(`System Ready. ID: ${myId.substring(0,4)}...`);
     log(`Target Server: ${serverUrl}`);
 
+    // --- BUTTON HANDLER ---
     document.getElementById('join-btn').addEventListener('click', async () => {
         log("Button Clicked. Starting...");
         const roomName = document.getElementById('room-input').value.trim();
@@ -133,10 +146,15 @@
         subtitleLabel.innerHTML = `Connecting to <b>${roomName}</b> as <b>${userName}</b>`;
         
         try {
-            // Initialize Audio Context on User Gesture (Required for iOS)
+            // A. Init AudioContext on Touch (Required for iOS)
             audioCtx = new (window.AudioContext || window.webkitAudioContext)();
             if (audioCtx.state === 'suspended') await audioCtx.resume();
             log("Audio Context Started ✅");
+            
+            // B. Prepare Audio Element
+            audioEl.muted = false;
+            audioEl.volume = 1.0;
+            
             initSignaling(roomName, userName);
         } catch (e) {
             log(`Init Error: ${e.message}`, 'error');
@@ -144,6 +162,15 @@
             statusLabel.className = "status error";
             document.getElementById('join-btn').disabled = false;
         }
+    });
+
+    // --- AUTOPLAY RESCUE ---
+    playOverlay.addEventListener('click', () => {
+        audioEl.play().then(() => {
+            playOverlay.style.display = 'none';
+            log("Manual Play Triggered ✅");
+            if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+        }).catch(e => log(`Manual Play Failed: ${e.message}`, 'error'));
     });
 
     function initSignaling(room, name) {
@@ -229,74 +256,63 @@
             document.getElementById('inputs').style.display = 'none';
             document.getElementById('meter-display').style.display = 'flex';
             
-            // --- UNIFIED AUDIO PIPELINE START ---
-            setupUnifiedAudio(event.streams[0], pc);
-            // --- UNIFIED AUDIO PIPELINE END ---
+            // --- FIXED PIPELINE: SEPARATE STREAMS ---
+            // 1. Playback Stream (Raw)
+            audioEl.srcObject = event.streams[0];
+            
+            // Attempt playback immediately
+            audioEl.play().catch(e => {
+                log(`Autoplay blocked: ${e.message}`, 'warn');
+                playOverlay.style.display = 'flex';
+            });
+
+            // 2. Diagnostics Stream (Cloned)
+            // Cloning prevents the analyser from "stealing" the audio from the speaker
+            const clone = event.streams[0].clone();
+            setupDiagnostics(clone, pc);
         };
 
         await pc.setRemoteDescription(new RTCSessionDescription({ type: "offer", sdp: sdp }));
         const answer = await pc.createAnswer();
-        
-        // Munge SDP for High Fidelity (Stereo, 510kbps)
         answer.sdp = answer.sdp.replace("useinbandfec=1", "useinbandfec=1;stereo=1;sprop-stereo=1;maxaveragebitrate=510000");
-        
         await pc.setLocalDescription(answer);
         socket.send(JSON.stringify({ type: "answer", sdp: answer.sdp, id: myId, targetId: senderId }));
     }
 
-    // --- UNIFIED PIPELINE (Fixes Regressions) ---
-    function setupUnifiedAudio(stream, peerConnection) {
-        // 1. Playback Element (HTML5 Audio) - Required for background audio on some OS
-        const audioEl = document.getElementById('remote-audio');
-        audioEl.srcObject = stream;
-        
-        // 2. Web Audio API (Everything else)
+    function setupDiagnostics(stream, peerConnection) {
         if (!audioCtx) return;
         
-        // Resume if suspended (common iOS issue)
-        if (audioCtx.state === 'suspended') audioCtx.resume();
-
-        // CREATE SOURCE ONCE
-        // Creating multiple MediaStreamSources from the same stream causes glitches on mobile
+        // Create source from CLONED stream
         const source = audioCtx.createMediaStreamSource(stream);
-
-        // A. Route to Speakers (Hear it)
-        source.connect(audioCtx.destination);
         
-        // B. Route to Metering (See it)
-        const splitter = audioCtx.createChannelSplitter(2);
-        source.connect(splitter);
-        setupStereoMeters(splitter);
+        // A. Route to Visuals
+        const analyser = audioCtx.createAnalyser();
+        analyser.fftSize = 256;
+        source.connect(analyser); // Do NOT connect to destination
         
-        // C. Route to Diagnostics (Monitor Silence)
-        // We reuse the metering splitter or create a dedicated analyser
-        const diagAnalyser = audioCtx.createAnalyser();
-        diagAnalyser.fftSize = 256;
-        source.connect(diagAnalyser);
-        startSilenceMonitor(diagAnalyser);
+        // Start Metering UI
+        setupStereoMeters(analyser);
         
-        // D. Start Network Monitor
+        // Start Silence & Network Monitors
+        startSilenceMonitor(analyser);
         startNetworkMonitor(peerConnection);
     }
 
-    function setupStereoMeters(splitter) {
-        const analyze = (idx, el) => {
-            const proc = audioCtx.createAnalyser();
-            proc.fftSize = 256;
-            splitter.connect(proc, idx);
-            const data = new Uint8Array(proc.frequencyBinCount);
-            
-            const draw = () => {
-                proc.getByteFrequencyData(data);
-                const avg = data.reduce((a, b) => a + b) / data.length;
-                el.style.height = Math.min(Math.sqrt(avg / 255) * 100, 100) + "%";
-                requestAnimationFrame(draw);
-            };
-            draw();
+    function setupStereoMeters(analyser) {
+        // Simple Mono-to-Stereo viz for mobile efficiency
+        const data = new Uint8Array(analyser.frequencyBinCount);
+        const elL = document.getElementById('fill-l');
+        const elR = document.getElementById('fill-r');
+        
+        const draw = () => {
+            analyser.getByteFrequencyData(data);
+            const avg = data.reduce((a, b) => a + b) / data.length;
+            const h = Math.min(Math.sqrt(avg / 255) * 100, 100) + "%";
+            elL.style.height = h;
+            elR.style.height = h;
+            requestAnimationFrame(draw);
         };
-
-        analyze(0, document.getElementById('fill-l'));
-        analyze(1, document.getElementById('fill-r'));
+        draw();
     }
 
     function startSilenceMonitor(analyser) {
@@ -312,7 +328,7 @@
 
             if (isDigitalSilence) {
                 silenceCount++;
-                if (silenceCount === 20) { // ~2 seconds
+                if (silenceCount === 20) { 
                     log("🔇 ALERT: Digital Silence Detected! (Logic Output is 0)", "error");
                 }
             } else {
