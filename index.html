@@ -6,39 +6,44 @@
     <title>Rewired Studio Monitor</title>
     <style>
         :root { --bg: #0a0a0a; --card: #161616; --accent: #007aff; --text: #ffffff; }
-        body { font-family: -apple-system, system-ui; background: var(--bg); color: var(--text); display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; overflow: hidden; }
-        .container { background: var(--card); padding: 30px; border-radius: 24px; text-align: center; width: 85%; max-width: 360px; box-shadow: 0 20px 40px rgba(0,0,0,0.4); border: 1px solid #333; }
+        body { font-family: -apple-system, system-ui; background: var(--bg); color: var(--text); display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; margin: 0; padding: 20px; box-sizing: border-box; }
+        .container { background: var(--card); padding: 30px; border-radius: 24px; text-align: center; width: 100%; max-width: 360px; box-shadow: 0 20px 40px rgba(0,0,0,0.4); border: 1px solid #333; z-index: 10; }
         h1 { font-size: 1.1rem; font-weight: 600; margin-bottom: 20px; color: #aaa; text-transform: uppercase; letter-spacing: 1px; }
         
         .input-group { margin-bottom: 15px; text-align: left; }
         label { display: block; font-size: 0.75rem; color: #666; margin-bottom: 5px; margin-left: 4px; text-transform: uppercase; }
         input { width: 100%; padding: 12px; background: #222; border: 1px solid #333; border-radius: 10px; color: white; font-size: 1rem; box-sizing: border-box; }
-        input:focus { outline: none; border-color: var(--accent); }
-
+        
         .meter-stack { display: flex; gap: 4px; justify-content: center; height: 120px; margin: 20px 0; }
         .meter { width: 12px; background: #222; border-radius: 4px; position: relative; overflow: hidden; }
         .meter-fill { width: 100%; position: absolute; bottom: 0; background: linear-gradient(to top, #34c759 0%, #34c759 70%, #ffcc00 85%, #ff3b30 100%); transition: height 0.08s ease-out; }
 
-        .status { font-size: 0.85rem; margin-bottom: 20px; color: #666; }
+        .status { font-size: 0.85rem; margin-bottom: 20px; color: #666; font-weight: 500; }
         .status.online { color: #34c759; }
+        .status.error { color: #ff3b30; }
 
         button { background: var(--accent); color: white; border: none; padding: 16px; border-radius: 14px; font-size: 1rem; font-weight: 600; cursor: pointer; width: 100%; -webkit-tap-highlight-color: transparent; }
         button:disabled { background: #333; color: #666; }
+
+        /* Debug Console */
+        #debug-console { width: 100%; max-width: 360px; height: 150px; background: #000; color: #0f0; font-family: 'Courier New', monospace; font-size: 10px; padding: 10px; margin-top: 20px; border-radius: 8px; overflow-y: auto; border: 1px solid #333; opacity: 0.8; }
+        .log-entry { margin-bottom: 4px; border-bottom: 1px solid #111; padding-bottom: 2px; }
     </style>
 </head>
 <body>
 
-<div class="container" id="setup-view">
+<div class="container">
     <h1>Studio Monitor</h1>
     
-    <div class="input-group">
-        <label>Room Name</label>
-        <input type="text" id="room-input" placeholder="studio1" value="studio1">
-    </div>
-    
-    <div class="input-group">
-        <label>Your Name</label>
-        <input type="text" id="name-input" placeholder="Enter name...">
+    <div id="inputs">
+        <div class="input-group">
+            <label>Room Name</label>
+            <input type="text" id="room-input" placeholder="studio1" value="studio1">
+        </div>
+        <div class="input-group">
+            <label>Your Name</label>
+            <input type="text" id="name-input" placeholder="Enter name...">
+        </div>
     </div>
 
     <div id="meter-display" class="meter-stack" style="display:none;">
@@ -46,60 +51,65 @@
         <div class="meter"><div id="fill-r" class="meter-fill" style="height: 0%"></div></div>
     </div>
 
-    <div id="status" class="status">Enter details to join</div>
+    <div id="status" class="status">Idle</div>
     <button id="join-btn">Listen Live</button>
 </div>
 
+<div id="debug-console"></div>
 <audio id="remote-audio" autoplay playsinline></audio>
 
 <script>
     const serverUrl = window.location.origin.replace(/^http/, 'ws');
     const myId = crypto.randomUUID();
+    const consoleEl = document.getElementById('debug-console');
+    const statusLabel = document.getElementById('status');
 
     let socket, pc, audioCtx;
 
-    const joinBtn = document.getElementById('join-btn');
-    const roomInput = document.getElementById('room-input');
-    const nameInput = document.getElementById('name-input');
-    const statusLabel = document.getElementById('status');
-    const meterDisplay = document.getElementById('meter-display');
-    const fillL = document.getElementById('fill-l');
-    const fillR = document.getElementById('fill-r');
+    function log(msg, type = 'info') {
+        const entry = document.createElement('div');
+        entry.className = 'log-entry';
+        const timestamp = new Date().toLocaleTimeString();
+        entry.innerText = `[${timestamp}] ${msg}`;
+        if (type === 'error') entry.style.color = '#ff3b30';
+        if (type === 'warn') entry.style.color = '#ffcc00';
+        consoleEl.prepend(entry);
+        console.log(`[REWIRED] ${msg}`);
+    }
 
-    joinBtn.addEventListener('click', async () => {
-        const roomName = roomInput.value.trim();
-        const userName = nameInput.value.trim();
+    document.getElementById('join-btn').addEventListener('click', async () => {
+        const roomName = document.getElementById('room-input').value.trim();
+        const userName = document.getElementById('name-input').value.trim();
 
         if (!roomName || !userName) {
-            statusLabel.innerText = "Room and Name required!";
-            statusLabel.style.color = "#ff3b30";
+            log("Missing Room or Name", "error");
             return;
         }
 
-        joinBtn.disabled = true;
-        roomInput.disabled = true;
-        nameInput.disabled = true;
-        statusLabel.style.color = "#666";
-        statusLabel.innerText = "Initializing Audio...";
+        document.getElementById('join-btn').disabled = true;
+        log(`Initializing for room: ${roomName} as ${userName}`);
         
         try {
             audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-            if (audioCtx.state === 'suspended') await audioCtx.resume();
-            
+            if (audioCtx.state === 'suspended') {
+                log("Resuming AudioContext...");
+                await audioCtx.resume();
+            }
+            log(`AudioContext State: ${audioCtx.state}`);
             initSignaling(roomName, userName);
         } catch (e) {
-            statusLabel.innerText = "Error: " + e.message;
-            joinBtn.disabled = false;
+            log(`Initialization Error: ${e.message}`, 'error');
+            statusLabel.innerText = "Check Browser Permissions";
         }
     });
 
     function initSignaling(room, name) {
+        log(`Connecting to WebSocket: ${serverUrl}`);
         socket = new WebSocket(serverUrl);
 
         socket.onopen = () => {
-            statusLabel.innerText = `Joining ${room}...`;
-            statusLabel.classList.add('online');
-            
+            log("WebSocket Connected ✅");
+            statusLabel.innerText = "Joining Room...";
             socket.send(JSON.stringify({
                 type: "join",
                 room: room,
@@ -113,22 +123,37 @@
             const msg = JSON.parse(event.data);
             if (msg.id === myId) return;
 
+            log(`Received Signal: ${msg.type}`);
+
             switch (msg.type) {
+                case "roster-update":
+                    log(`Roster Updated: ${msg.roster.length} peers in room`);
+                    break;
                 case "offer":
+                    log("Handshaking with Mac App (Offer Received)");
                     handleOffer(msg.sdp, msg.id);
                     break;
                 case "candidate":
-                    if (pc) await pc.addIceCandidate(new RTCIceCandidate({
-                        candidate: msg.candidate,
-                        sdpMLineIndex: msg.sdpMLineIndex,
-                        sdpMid: msg.sdpMid
-                    }));
+                    if (pc) {
+                        try {
+                            await pc.addIceCandidate(new RTCIceCandidate({
+                                candidate: msg.candidate,
+                                sdpMLineIndex: msg.sdpMLineIndex,
+                                sdpMid: msg.sdpMid
+                            }));
+                            log("ICE Candidate Added Successfully");
+                        } catch(e) { log("ICE Error: " + e.message, 'warn'); }
+                    }
                     break;
             }
         };
+
+        socket.onerror = (e) => log("WebSocket Error!", "error");
+        socket.onclose = () => log("WebSocket Disconnected", "warn");
     }
 
     async function handleOffer(sdp, senderId) {
+        log("Creating PeerConnection...");
         pc = new RTCPeerConnection({
             iceServers: [{ urls: "stun:stun.l.google.com:19302" }]
         });
@@ -146,25 +171,38 @@
             }
         };
 
+        pc.onconnectionstatechange = () => {
+            log(`WebRTC Connection State: ${pc.connectionState}`);
+            if (pc.connectionState === 'connected') {
+                statusLabel.innerText = "Live Stream Active";
+                statusLabel.classList.add('online');
+            }
+        };
+
         pc.ontrack = (event) => {
-            statusLabel.innerText = "Live Stream Active";
-            meterDisplay.style.display = "flex";
+            log("Audio Track Received! 🎧");
+            document.getElementById('inputs').style.display = 'none';
+            document.getElementById('meter-display').style.display = 'flex';
             const stream = event.streams[0];
             document.getElementById('remote-audio').srcObject = stream;
             setupMetering(stream);
         };
 
         await pc.setRemoteDescription(new RTCSessionDescription({ type: "offer", sdp: sdp }));
+        log("Remote Description (Offer) Set ✅");
+
         const answer = await pc.createAnswer();
-        
         // Munge SDP for high quality stereo [cite: 359]
         answer.sdp = answer.sdp.replace("useinbandfec=1", "useinbandfec=1;stereo=1;sprop-stereo=1;maxaveragebitrate=510000");
         
         await pc.setLocalDescription(answer);
+        log("Local Description (Answer) Sent ✅");
+
         socket.send(JSON.stringify({ type: "answer", sdp: answer.sdp, id: myId, targetId: senderId }));
     }
 
     function setupMetering(stream) {
+        log("Initializing Visual Meters...");
         const source = audioCtx.createMediaStreamSource(stream);
         const splitter = audioCtx.createChannelSplitter(2);
         source.connect(splitter);
@@ -183,8 +221,8 @@
             };
             draw();
         };
-        analyze(0, fillL);
-        analyze(1, fillR);
+        analyze(0, document.getElementById('fill-l'));
+        analyze(1, document.getElementById('fill-r'));
     }
 </script>
 </body>
