@@ -7,38 +7,50 @@
     <style>
         :root { --bg: #0a0a0a; --card: #161616; --accent: #007aff; --text: #ffffff; }
         body { font-family: -apple-system, system-ui; background: var(--bg); color: var(--text); display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; margin: 0; padding: 20px; box-sizing: border-box; }
-        .container { background: var(--card); padding: 30px; border-radius: 24px; text-align: center; width: 100%; max-width: 360px; box-shadow: 0 20px 40px rgba(0,0,0,0.4); border: 1px solid #333; z-index: 10; }
-        h1 { font-size: 1.1rem; font-weight: 600; margin-bottom: 20px; color: #aaa; text-transform: uppercase; letter-spacing: 1px; }
+        .container { background: var(--card); padding: 30px; border-radius: 24px; text-align: center; width: 100%; max-width: 360px; box-shadow: 0 20px 40px rgba(0,0,0,0.4); border: 1px solid #333; }
+        h1 { font-size: 1.1rem; font-weight: 600; margin-bottom: 4px; color: #fff; text-transform: uppercase; letter-spacing: 1px; }
         
+        /* Subtitle Styles */
+        .subtitle { font-size: 0.8rem; color: #888; margin-bottom: 20px; }
+        .subtitle b { color: var(--accent); }
+
         .input-group { margin-bottom: 15px; text-align: left; }
         label { display: block; font-size: 0.75rem; color: #666; margin-bottom: 5px; margin-left: 4px; text-transform: uppercase; }
         input { width: 100%; padding: 12px; background: #222; border: 1px solid #333; border-radius: 10px; color: white; font-size: 1rem; box-sizing: border-box; }
         
-        .meter-stack { display: flex; gap: 4px; justify-content: center; height: 120px; margin: 20px 0; }
+        .meter-stack { display: flex; gap: 4px; justify-content: center; height: 100px; margin: 20px 0; }
         .meter { width: 12px; background: #222; border-radius: 4px; position: relative; overflow: hidden; }
         .meter-fill { width: 100%; position: absolute; bottom: 0; background: linear-gradient(to top, #34c759 0%, #34c759 70%, #ffcc00 85%, #ff3b30 100%); transition: height 0.08s ease-out; }
 
         .status { font-size: 0.85rem; margin-bottom: 20px; color: #666; font-weight: 500; }
         .status.online { color: #34c759; }
+        .status.connecting { color: #ff9500; }
         .status.error { color: #ff3b30; }
+
+        /* Roster Area */
+        .roster-container { margin-top: 20px; text-align: left; border-top: 1px solid #333; padding-top: 15px; }
+        .roster-title { font-size: 0.7rem; color: #555; font-weight: bold; margin-bottom: 10px; text-transform: uppercase; }
+        .roster-list { list-style: none; padding: 0; margin: 0; font-size: 0.85rem; }
+        .roster-item { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; color: #ccc; }
+        .roster-icon { width: 8px; height: 8px; border-radius: 50%; background: #444; }
+        .roster-icon.sender { background: #007aff; box-shadow: 0 0 5px #007aff; }
+        .roster-item b { color: #fff; font-weight: 500; }
 
         button { background: var(--accent); color: white; border: none; padding: 16px; border-radius: 14px; font-size: 1rem; font-weight: 600; cursor: pointer; width: 100%; -webkit-tap-highlight-color: transparent; }
         button:disabled { background: #333; color: #666; }
-
-        /* Debug Console */
-        #debug-console { width: 100%; max-width: 360px; height: 150px; background: #000; color: #0f0; font-family: 'Courier New', monospace; font-size: 10px; padding: 10px; margin-top: 20px; border-radius: 8px; overflow-y: auto; border: 1px solid #333; opacity: 0.8; }
-        .log-entry { margin-bottom: 4px; border-bottom: 1px solid #111; padding-bottom: 2px; }
+        #debug-console { width: 100%; max-width: 360px; height: 100px; background: #000; color: #0f0; font-family: monospace; font-size: 9px; padding: 10px; margin-top: 20px; border-radius: 8px; overflow-y: auto; border: 1px solid #333; }
     </style>
 </head>
 <body>
 
 <div class="container">
     <h1>Studio Monitor</h1>
+    <div id="subtitle" class="subtitle">Not Connected</div>
     
     <div id="inputs">
         <div class="input-group">
             <label>Room Name</label>
-            <input type="text" id="room-input" placeholder="studio1" value="studio1">
+            <input type="text" id="room-input" value="studio1">
         </div>
         <div class="input-group">
             <label>Your Name</label>
@@ -53,6 +65,11 @@
 
     <div id="status" class="status">Idle</div>
     <button id="join-btn">Listen Live</button>
+
+    <div class="roster-container" id="roster-view" style="display:none;">
+        <div class="roster-title">Room Roster</div>
+        <ul id="roster-list" class="roster-list"></ul>
+    </div>
 </div>
 
 <div id="debug-console"></div>
@@ -63,53 +80,45 @@
     const myId = crypto.randomUUID();
     const consoleEl = document.getElementById('debug-console');
     const statusLabel = document.getElementById('status');
+    const subtitleLabel = document.getElementById('subtitle');
+    const rosterList = document.getElementById('roster-list');
 
     let socket, pc, audioCtx;
 
     function log(msg, type = 'info') {
         const entry = document.createElement('div');
-        entry.className = 'log-entry';
-        const timestamp = new Date().toLocaleTimeString();
-        entry.innerText = `[${timestamp}] ${msg}`;
+        entry.innerText = `[${new Date().toLocaleTimeString()}] ${msg}`;
         if (type === 'error') entry.style.color = '#ff3b30';
-        if (type === 'warn') entry.style.color = '#ffcc00';
         consoleEl.prepend(entry);
-        console.log(`[REWIRED] ${msg}`);
     }
 
     document.getElementById('join-btn').addEventListener('click', async () => {
         const roomName = document.getElementById('room-input').value.trim();
         const userName = document.getElementById('name-input').value.trim();
 
-        if (!roomName || !userName) {
-            log("Missing Room or Name", "error");
-            return;
-        }
+        if (!roomName || !userName) return;
 
         document.getElementById('join-btn').disabled = true;
-        log(`Initializing for room: ${roomName} as ${userName}`);
+        statusLabel.innerText = "Connecting...";
+        statusLabel.className = "status connecting";
+        subtitleLabel.innerHTML = `Connecting to <b>${roomName}</b> as <b>${userName}</b>`;
         
         try {
             audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-            if (audioCtx.state === 'suspended') {
-                log("Resuming AudioContext...");
-                await audioCtx.resume();
-            }
-            log(`AudioContext State: ${audioCtx.state}`);
+            if (audioCtx.state === 'suspended') await audioCtx.resume();
             initSignaling(roomName, userName);
         } catch (e) {
-            log(`Initialization Error: ${e.message}`, 'error');
-            statusLabel.innerText = "Check Browser Permissions";
+            log(`Init Error: ${e.message}`, 'error');
+            statusLabel.innerText = "Connection Failed";
+            statusLabel.className = "status error";
         }
     });
 
     function initSignaling(room, name) {
-        log(`Connecting to WebSocket: ${serverUrl}`);
         socket = new WebSocket(serverUrl);
 
         socket.onopen = () => {
             log("WebSocket Connected ✅");
-            statusLabel.innerText = "Joining Room...";
             socket.send(JSON.stringify({
                 type: "join",
                 room: room,
@@ -121,92 +130,84 @@
 
         socket.onmessage = async (event) => {
             const msg = JSON.parse(event.data);
-            if (msg.id === myId) return;
-
-            log(`Received Signal: ${msg.type}`);
+            if (msg.id === myId && msg.type !== "roster-update") return;
 
             switch (msg.type) {
                 case "roster-update":
-                    log(`Roster Updated: ${msg.roster.length} peers in room`);
+                    updateRosterUI(msg.roster); [cite: 234, 235]
                     break;
                 case "offer":
-                    log("Handshaking with Mac App (Offer Received)");
-                    handleOffer(msg.sdp, msg.id);
+                    handleOffer(msg.sdp, msg.id); [cite: 242]
                     break;
                 case "candidate":
-                    if (pc) {
-                        try {
-                            await pc.addIceCandidate(new RTCIceCandidate({
-                                candidate: msg.candidate,
-                                sdpMLineIndex: msg.sdpMLineIndex,
-                                sdpMid: msg.sdpMid
-                            }));
-                            log("ICE Candidate Added Successfully");
-                        } catch(e) { log("ICE Error: " + e.message, 'warn'); }
-                    }
+                    if (pc) await pc.addIceCandidate(new RTCIceCandidate(msg)); [cite: 244, 245, 265]
                     break;
             }
         };
 
-        socket.onerror = (e) => log("WebSocket Error!", "error");
-        socket.onclose = () => log("WebSocket Disconnected", "warn");
+        socket.onclose = () => {
+            statusLabel.innerText = "Not Connected";
+            statusLabel.className = "status";
+            subtitleLabel.innerText = "Not Connected";
+            document.getElementById('roster-view').style.display = 'none';
+        };
+    }
+
+    function updateRosterUI(roster) {
+        rosterList.innerHTML = '';
+        document.getElementById('roster-view').style.display = 'block';
+        
+        roster.forEach(peer => {
+            const item = document.createElement('li');
+            item.className = 'roster-item';
+            
+            // Check if peer is the Mac Sender [cite: 208, 222, 236]
+            const isSender = peer.role === 'duplex' || peer.name.includes('(You)'); 
+            const icon = document.createElement('div');
+            icon.className = `roster-icon ${isSender ? 'sender' : ''}`;
+            
+            item.appendChild(icon);
+            item.innerHTML += `<b>${peer.name}</b> ${isSender ? '📡' : '🎧'}`;
+            rosterList.appendChild(item);
+        });
     }
 
     async function handleOffer(sdp, senderId) {
-        log("Creating PeerConnection...");
-        pc = new RTCPeerConnection({
-            iceServers: [{ urls: "stun:stun.l.google.com:19302" }]
-        });
+        pc = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }] }); [cite: 254]
 
         pc.onicecandidate = (e) => {
-            if (e.candidate) {
-                socket.send(JSON.stringify({
-                    type: "candidate",
-                    candidate: e.candidate.candidate,
-                    sdpMLineIndex: e.candidate.sdpMLineIndex,
-                    sdpMid: e.candidate.sdpMid,
-                    id: myId,
-                    targetId: senderId
-                }));
-            }
+            if (e.candidate) socket.send(JSON.stringify({ ...e.candidate.toJSON(), type: 'candidate', id: myId, targetId: senderId })); [cite: 291, 292]
         };
 
         pc.onconnectionstatechange = () => {
-            log(`WebRTC Connection State: ${pc.connectionState}`);
             if (pc.connectionState === 'connected') {
                 statusLabel.innerText = "Live Stream Active";
-                statusLabel.classList.add('online');
+                statusLabel.className = "status online";
+                // Final subtitle update
+                const room = document.getElementById('room-input').value;
+                const name = document.getElementById('name-input').value;
+                subtitleLabel.innerHTML = `Connected to <b>${room}</b> as <b>${name}</b>`;
             }
         };
 
         pc.ontrack = (event) => {
-            log("Audio Track Received! 🎧");
             document.getElementById('inputs').style.display = 'none';
             document.getElementById('meter-display').style.display = 'flex';
-            const stream = event.streams[0];
-            document.getElementById('remote-audio').srcObject = stream;
-            setupMetering(stream);
+            document.getElementById('remote-audio').srcObject = event.streams[0];
+            setupMetering(event.streams[0]);
         };
 
-        await pc.setRemoteDescription(new RTCSessionDescription({ type: "offer", sdp: sdp }));
-        log("Remote Description (Offer) Set ✅");
-
-        const answer = await pc.createAnswer();
-        // Munge SDP for high quality stereo [cite: 359]
-        answer.sdp = answer.sdp.replace("useinbandfec=1", "useinbandfec=1;stereo=1;sprop-stereo=1;maxaveragebitrate=510000");
-        
-        await pc.setLocalDescription(answer);
-        log("Local Description (Answer) Sent ✅");
-
-        socket.send(JSON.stringify({ type: "answer", sdp: answer.sdp, id: myId, targetId: senderId }));
+        await pc.setRemoteDescription(new RTCSessionDescription({ type: "offer", sdp: sdp })); [cite: 258, 259]
+        const answer = await pc.createAnswer(); [cite: 260]
+        answer.sdp = answer.sdp.replace("useinbandfec=1", "useinbandfec=1;stereo=1;sprop-stereo=1;maxaveragebitrate=510000"); [cite: 359]
+        await pc.setLocalDescription(answer); [cite: 261]
+        socket.send(JSON.stringify({ type: "answer", sdp: answer.sdp, id: myId, targetId: senderId })); [cite: 267]
     }
 
     function setupMetering(stream) {
-        log("Initializing Visual Meters...");
         const source = audioCtx.createMediaStreamSource(stream);
-        const splitter = audioCtx.createChannelSplitter(2);
+        const splitter = audioCtx.createChannelSplitter(2); [cite: 330]
         source.connect(splitter);
-
         const analyze = (idx, el) => {
             const proc = audioCtx.createAnalyser();
             proc.fftSize = 256;
@@ -215,14 +216,13 @@
             const draw = () => {
                 proc.getByteFrequencyData(data);
                 const avg = data.reduce((a, b) => a + b) / data.length;
-                const boosted = Math.min(Math.sqrt(avg / 255) * 100, 100);
-                el.style.height = boosted + "%";
+                el.style.height = Math.min(Math.sqrt(avg / 255) * 100, 100) + "%";
                 requestAnimationFrame(draw);
             };
             draw();
         };
-        analyze(0, document.getElementById('fill-l'));
-        analyze(1, document.getElementById('fill-r'));
+        analyze(0, document.getElementById('fill-l')); [cite: 40]
+        analyze(1, document.getElementById('fill-r')); [cite: 40]
     }
 </script>
 </body>
