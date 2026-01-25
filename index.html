@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Rewired Studio Monitor</title>
+    <style>
+        :root { --bg: #0a0a0a; --card: #161616; --accent: #007aff; --text: #ffffff; }
+        body { font-family: -apple-system, system-ui; background: var(--bg); color: var(--text); display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; overflow: hidden; }
+        .container { background: var(--card); padding: 40px; border-radius: 24px; text-align: center; width: 85%; max-width: 400px; box-shadow: 0 20px 40px rgba(0,0,0,0.4); border: 1px solid #333; }
+        h1 { font-size: 1.2rem; font-weight: 600; margin-bottom: 8px; color: #aaa; text-transform: uppercase; letter-spacing: 1px; }
+        .status { font-size: 0.9rem; margin-bottom: 30px; color: #666; }
+        .status.online { color: #34c759; }
+
+        /* Elegant Vertical Meter */
+        .meter-stack { display: flex; gap: 4px; justify-content: center; height: 180px; margin-bottom: 30px; }
+        .meter { width: 14px; background: #222; border-radius: 4px; position: relative; overflow: hidden; }
+        .meter-fill { width: 100%; position: absolute; bottom: 0; background: linear-gradient(to top, #34c759 0%, #34c759 70%, #ffcc00 85%, #ff3b30 100%); transition: height 0.08s ease-out; }
+
+        button { background: var(--accent); color: white; border: none; padding: 18px 32px; border-radius: 14px; font-size: 1rem; font-weight: 600; cursor: pointer; width: 100%; transition: transform 0.1s; -webkit-tap-highlight-color: transparent; }
+        button:active { transform: scale(0.98); opacity: 0.9; }
+        button:disabled { background: #333; color: #666; cursor: not-allowed; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>Studio Monitor</h1>
+    <div id="status" class="status">Ready to Join</div>
+
+    <div class="meter-stack">
+        <div class="meter"><div id="fill-l" class="meter-fill" style="height: 0%"></div></div>
+        <div class="meter"><div id="fill-r" class="meter-fill" style="height: 0%"></div></div>
+    </div>
+
+    <button id="join-btn">Listen Live</button>
+</div>
+
+<audio id="remote-audio" autoplay playsinline></audio>
+
+<script>
+    const serverUrl = window.location.origin.replace(/^http/, 'ws'); // Auto-detect Render URL [cite: 140]
+    const room = "studio1"; // Default room [cite: 140]
+    const userName = "Web-Listener-" + Math.floor(Math.random() * 1000);
+    const myId = crypto.randomUUID();
+
+    let socket, pc, audioCtx, analyzer;
+
+    const joinBtn = document.getElementById('join-btn');
+    const statusLabel = document.getElementById('status');
+    const fillL = document.getElementById('fill-l');
+    const fillR = document.getElementById('fill-r');
+
+    joinBtn.addEventListener('click', async () => {
+        joinBtn.disabled = true;
+        statusLabel.innerText = "Initializing Audio...";
+        
+        try {
+            // [CRITICAL FOR iOS] Create and resume AudioContext on click
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            if (audioCtx.state === 'suspended') await audioCtx.resume();
+            
+            initSignaling();
+        } catch (e) {
+            statusLabel.innerText = "Error: " + e.message;
+            joinBtn.disabled = false;
+        }
+    });
+
+    function initSignaling() {
+        socket = new WebSocket(serverUrl);
+
+        socket.onopen = () => {
+            statusLabel.innerText = "Connecting to Room...";
+            statusLabel.classList.add('online');
+            // Matching the App's Join protocol [cite: 222]
+            socket.send(JSON.stringify({
+                type: "join",
+                room: room,
+                name: userName,
+                id: myId,
+                role: "receiver"
+            }));
+        };
+
+        socket.onmessage = async (event) => {
+            const msg = JSON.parse(event.data);
+            if (msg.id === myId) return;
+
+            switch (msg.type) {
+                case "offer":
+                    handleOffer(msg.sdp, msg.id);
+                    break;
+                case "candidate":
+                    if (pc) await pc.addIceCandidate(new RTCIceCandidate({
+                        candidate: msg.candidate,
+                        sdpMLineIndex: msg.sdpMLineIndex,
+                        sdpMid: msg.sdpMid
+                    }));
+                    break;
+            }
+        };
+    }
+
+    async function handleOffer(sdp, senderId) {
+        // Constraints to disable processing for Studio Transparency [cite: 210, 359, 360]
+        pc = new RTCPeerConnection({
+            iceServers: [{ urls: "stun:stun.l.google.com:19302" }]
+        });
+
+        pc.onicecandidate = (e) => {
+            if (e.candidate) {
+                socket.send(JSON.stringify({
+                    type: "candidate",
+                    candidate: e.candidate.candidate,
+                    sdpMLineIndex: e.candidate.sdpMLineIndex,
+                    sdpMid: e.candidate.sdpMid,
+                    id: myId,
+                    targetId: senderId
+                }));
+            }
+        };
+
+        pc.ontrack = (event) => {
+            statusLabel.innerText = "Live Stream Active";
+            const stream = event.streams[0];
+            const audioEl = document.getElementById('remote-audio');
+            audioEl.srcObject = stream;
+            setupMetering(stream);
+        };
+
+        await pc.setRemoteDescription(new RTCSessionDescription({ type: "offer", sdp: sdp }));
+        const answer = await pc.createAnswer();
+        
+        // SDP Munging: Force Stereo and High Bitrate for the browser decoder [cite: 357, 358, 359]
+        answer.sdp = answer.sdp.replace("useinbandfec=1", "useinbandfec=1;stereo=1;sprop-stereo=1;maxaveragebitrate=510000");
+        
+        await pc.setLocalDescription(answer);
+        socket.send(JSON.stringify({ type: "answer", sdp: answer.sdp, id: myId, targetId: senderId }));
+    }
+
+    function setupMetering(stream) {
+        const source = audioCtx.createMediaStreamSource(stream);
+        const splitter = audioCtx.createChannelSplitter(2);
+        source.connect(splitter);
+
+        const analyzeChannel = (channelIdx, fillEl) => {
+            const proc = audioCtx.createAnalyser();
+            proc.fftSize = 256;
+            splitter.connect(proc, channelIdx);
+            const data = new Uint8Array(proc.frequencyBinCount);
+
+            const draw = () => {
+                proc.getByteFrequencyData(data);
+                const average = data.reduce((a, b) => a + b) / data.length;
+                // Sensitivity Boost: RMS-like visualization for Logic [cite: 33]
+                const boosted = Math.min(Math.sqrt(average / 255) * 100, 100);
+                fillEl.style.height = boosted + "%";
+                requestAnimationFrame(draw);
+            };
+            draw();
+        };
+
+        analyzeChannel(0, fillL); // Left [cite: 40]
+        analyzeChannel(1, fillR); // Right [cite: 40]
+    }
+</script>
+
+</body>
+</html>
