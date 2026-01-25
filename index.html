@@ -10,7 +10,6 @@
         .container { background: var(--card); padding: 30px; border-radius: 24px; text-align: center; width: 100%; max-width: 360px; box-shadow: 0 20px 40px rgba(0,0,0,0.4); border: 1px solid #333; }
         h1 { font-size: 1.1rem; font-weight: 600; margin-bottom: 4px; color: #fff; text-transform: uppercase; letter-spacing: 1px; }
         
-        /* Subtitle Styles */
         .subtitle { font-size: 0.8rem; color: #888; margin-bottom: 20px; }
         .subtitle b { color: var(--accent); }
 
@@ -27,7 +26,6 @@
         .status.connecting { color: #ff9500; }
         .status.error { color: #ff3b30; }
 
-        /* Roster Area */
         .roster-container { margin-top: 20px; text-align: left; border-top: 1px solid #333; padding-top: 15px; }
         .roster-title { font-size: 0.7rem; color: #555; font-weight: bold; margin-bottom: 10px; text-transform: uppercase; }
         .roster-list { list-style: none; padding: 0; margin: 0; font-size: 0.85rem; }
@@ -38,7 +36,9 @@
 
         button { background: var(--accent); color: white; border: none; padding: 16px; border-radius: 14px; font-size: 1rem; font-weight: 600; cursor: pointer; width: 100%; -webkit-tap-highlight-color: transparent; }
         button:disabled { background: #333; color: #666; }
-        #debug-console { width: 100%; max-width: 360px; height: 100px; background: #000; color: #0f0; font-family: monospace; font-size: 9px; padding: 10px; margin-top: 20px; border-radius: 8px; overflow-y: auto; border: 1px solid #333; }
+        button:active { transform: scale(0.98); }
+        
+        #debug-console { width: 100%; max-width: 360px; height: 120px; background: #000; color: #0f0; font-family: monospace; font-size: 10px; padding: 10px; margin-top: 20px; border-radius: 8px; overflow-y: auto; border: 1px solid #333; text-align: left; }
     </style>
 </head>
 <body>
@@ -76,27 +76,57 @@
 <audio id="remote-audio" autoplay playsinline></audio>
 
 <script>
-    const serverUrl = window.location.origin.replace(/^http/, 'ws');
-    const myId = crypto.randomUUID();
+    // 1. Global Error Handler to catch syntax or runtime errors immediately
+    window.onerror = function(message, source, lineno, colno, error) {
+        log(`CRITICAL ERROR: ${message}`, 'error');
+        console.error(error);
+    };
+
     const consoleEl = document.getElementById('debug-console');
     const statusLabel = document.getElementById('status');
     const subtitleLabel = document.getElementById('subtitle');
     const rosterList = document.getElementById('roster-list');
+    
+    // 2. Safe ID Generator (Compatible with Render/HTTPS and Localhost)
+    function generateId() {
+        if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+            return crypto.randomUUID();
+        }
+        return 'user-' + Math.random().toString(36).substr(2, 9);
+    }
 
+    // 3. Render-Compatible URL Detector
+    function getServerUrl() {
+        // Automatically upgrades http:// -> ws:// and https:// -> wss://
+        return window.location.origin.replace(/^http/, 'ws');
+    }
+
+    const myId = generateId();
+    const serverUrl = getServerUrl();
+    
     let socket, pc, audioCtx;
 
     function log(msg, type = 'info') {
         const entry = document.createElement('div');
-        entry.innerText = `[${new Date().toLocaleTimeString()}] ${msg}`;
+        entry.innerText = `> ${msg}`;
         if (type === 'error') entry.style.color = '#ff3b30';
+        if (type === 'warn') entry.style.color = '#ffcc00';
         consoleEl.prepend(entry);
+        console.log(msg);
     }
 
+    log(`System Ready. ID: ${myId.substring(0,4)}...`);
+    log(`Target Server: ${serverUrl}`);
+
     document.getElementById('join-btn').addEventListener('click', async () => {
+        log("Button Clicked. Starting...");
         const roomName = document.getElementById('room-input').value.trim();
         const userName = document.getElementById('name-input').value.trim();
 
-        if (!roomName || !userName) return;
+        if (!roomName || !userName) {
+            log("Error: Name and Room required", "error");
+            return;
+        }
 
         document.getElementById('join-btn').disabled = true;
         statusLabel.innerText = "Connecting...";
@@ -104,17 +134,21 @@
         subtitleLabel.innerHTML = `Connecting to <b>${roomName}</b> as <b>${userName}</b>`;
         
         try {
+            // Initialize Audio Context on User Gesture (Required for iOS/Chrome)
             audioCtx = new (window.AudioContext || window.webkitAudioContext)();
             if (audioCtx.state === 'suspended') await audioCtx.resume();
+            log("Audio Context Started ✅");
             initSignaling(roomName, userName);
         } catch (e) {
             log(`Init Error: ${e.message}`, 'error');
             statusLabel.innerText = "Connection Failed";
             statusLabel.className = "status error";
+            document.getElementById('join-btn').disabled = false;
         }
     });
 
     function initSignaling(room, name) {
+        log(`Dialing WebSocket: ${serverUrl}`);
         socket = new WebSocket(serverUrl);
 
         socket.onopen = () => {
@@ -134,22 +168,29 @@
 
             switch (msg.type) {
                 case "roster-update":
-                    updateRosterUI(msg.roster); [cite: 234, 235]
+                    updateRosterUI(msg.roster);
                     break;
                 case "offer":
-                    handleOffer(msg.sdp, msg.id); [cite: 242]
+                    log("Received Offer from Sender");
+                    handleOffer(msg.sdp, msg.id);
                     break;
                 case "candidate":
-                    if (pc) await pc.addIceCandidate(new RTCIceCandidate(msg)); [cite: 244, 245, 265]
+                    if (pc) await pc.addIceCandidate(new RTCIceCandidate(msg));
                     break;
             }
         };
+        
+        socket.onerror = (e) => {
+            log("WebSocket Error. Check Server URL.", "error");
+            statusLabel.innerText = "Server Error";
+            statusLabel.className = "status error";
+        };
 
         socket.onclose = () => {
-            statusLabel.innerText = "Not Connected";
+            log("WebSocket Disconnected", "warn");
+            statusLabel.innerText = "Disconnected";
             statusLabel.className = "status";
-            subtitleLabel.innerText = "Not Connected";
-            document.getElementById('roster-view').style.display = 'none';
+            document.getElementById('join-btn').disabled = false;
         };
     }
 
@@ -160,12 +201,9 @@
         roster.forEach(peer => {
             const item = document.createElement('li');
             item.className = 'roster-item';
-            
-            // Check if peer is the Mac Sender [cite: 208, 222, 236]
             const isSender = peer.role === 'duplex' || peer.name.includes('(You)'); 
             const icon = document.createElement('div');
             icon.className = `roster-icon ${isSender ? 'sender' : ''}`;
-            
             item.appendChild(icon);
             item.innerHTML += `<b>${peer.name}</b> ${isSender ? '📡' : '🎧'}`;
             rosterList.appendChild(item);
@@ -173,40 +211,42 @@
     }
 
     async function handleOffer(sdp, senderId) {
-        pc = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }] }); [cite: 254]
+        log("Negotiating WebRTC...");
+        pc = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }] });
 
         pc.onicecandidate = (e) => {
-            if (e.candidate) socket.send(JSON.stringify({ ...e.candidate.toJSON(), type: 'candidate', id: myId, targetId: senderId })); [cite: 291, 292]
+            if (e.candidate) socket.send(JSON.stringify({ ...e.candidate.toJSON(), type: 'candidate', id: myId, targetId: senderId }));
         };
 
         pc.onconnectionstatechange = () => {
+            log(`Connection State: ${pc.connectionState}`);
             if (pc.connectionState === 'connected') {
                 statusLabel.innerText = "Live Stream Active";
                 statusLabel.className = "status online";
-                // Final subtitle update
-                const room = document.getElementById('room-input').value;
-                const name = document.getElementById('name-input').value;
-                subtitleLabel.innerHTML = `Connected to <b>${room}</b> as <b>${name}</b>`;
             }
         };
 
         pc.ontrack = (event) => {
+            log("Audio Track Received! 🔈");
             document.getElementById('inputs').style.display = 'none';
             document.getElementById('meter-display').style.display = 'flex';
             document.getElementById('remote-audio').srcObject = event.streams[0];
             setupMetering(event.streams[0]);
         };
 
-        await pc.setRemoteDescription(new RTCSessionDescription({ type: "offer", sdp: sdp })); [cite: 258, 259]
-        const answer = await pc.createAnswer(); [cite: 260]
-        answer.sdp = answer.sdp.replace("useinbandfec=1", "useinbandfec=1;stereo=1;sprop-stereo=1;maxaveragebitrate=510000"); [cite: 359]
-        await pc.setLocalDescription(answer); [cite: 261]
-        socket.send(JSON.stringify({ type: "answer", sdp: answer.sdp, id: myId, targetId: senderId })); [cite: 267]
+        await pc.setRemoteDescription(new RTCSessionDescription({ type: "offer", sdp: sdp }));
+        const answer = await pc.createAnswer();
+        
+        // Munge SDP for High Fidelity (Stereo, 510kbps)
+        answer.sdp = answer.sdp.replace("useinbandfec=1", "useinbandfec=1;stereo=1;sprop-stereo=1;maxaveragebitrate=510000");
+        
+        await pc.setLocalDescription(answer);
+        socket.send(JSON.stringify({ type: "answer", sdp: answer.sdp, id: myId, targetId: senderId }));
     }
 
     function setupMetering(stream) {
         const source = audioCtx.createMediaStreamSource(stream);
-        const splitter = audioCtx.createChannelSplitter(2); [cite: 330]
+        const splitter = audioCtx.createChannelSplitter(2);
         source.connect(splitter);
         const analyze = (idx, el) => {
             const proc = audioCtx.createAnalyser();
@@ -221,8 +261,8 @@
             };
             draw();
         };
-        analyze(0, document.getElementById('fill-l')); [cite: 40]
-        analyze(1, document.getElementById('fill-r')); [cite: 40]
+        analyze(0, document.getElementById('fill-l'));
+        analyze(1, document.getElementById('fill-r'));
     }
 </script>
 </body>
