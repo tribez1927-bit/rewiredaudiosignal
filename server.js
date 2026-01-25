@@ -1,157 +1,120 @@
-// server.js - Rock Solid Signaling with State Persistence
+const express = require('express');
+const http = require('http');
 const WebSocket = require('ws');
-const port = process.env.PORT || 8080;
-const wss = new WebSocket.Server({ port });
+const path = require('path');
 
-// State Store: Map<roomId, Map<userId, UserObject>>
-const rooms = new Map();
+const app = express();
+const server = http.createServer(app);
+const wss = new WebSocket.Server({ server });
+
+const PORT = process.env.PORT || 3000;
+
+// Serve the static HTML receiver page
+app.get('/', (req, res) => {
+    res.sendFile(path.join(__dirname, 'index.html'));
+});
+
+// Store connected peers
+// This maintains the "Room Roster" state required by the app [cite: 208, 246]
+let rooms = {}; 
 
 wss.on('connection', (ws) => {
-    let currentUser = { id: null, room: null };
-    ws.isAlive = true;
-    
-    // Heartbeat: responding to server pings
-    ws.on('pong', () => { ws.isAlive = true; });
+    let currentUser = null;
 
-    ws.on('message', (data) => {
-        let msg;
-        try { msg = JSON.parse(data); } catch (e) { return; }
+    ws.on('message', (message) => {
+        const data = JSON.parse(message);
 
-        switch (msg.type) {
+        switch (data.type) {
             case 'join':
-                handleJoin(ws, msg, currentUser);
+                // logic matches 'join' message in NwSessionCoordinator [cite: 222]
+                currentUser = {
+                    id: data.id,
+                    name: data.name,
+                    room: data.room,
+                    role: data.role || 'receiver',
+                    isMicEnabled: data.isMicEnabled || false,
+                    isMusicEnabled: data.isMusicEnabled || true,
+                    isBroadcasting: data.isBroadcasting || false,
+                    ws: ws
+                };
+
+                if (!rooms[data.room]) rooms[data.room] = [];
+                rooms[data.room].push(currentUser);
+
+                console.log(`👤 ${currentUser.name} joined room: ${data.room}`);
+
+                // Send full roster update to all in room [cite: 234, 246]
+                broadcastRoster(data.room);
                 break;
-                
-            case 'status-update':
-                handleStatusUpdate(currentUser, msg);
-                break;
-                
+
             case 'offer':
             case 'answer':
             case 'candidate':
-                // Relay WebRTC signals to the specific target peer
-                // If 'target' is missing (broadcast), send to all except sender
-                relaySignal(currentUser, msg);
+                // Relay WebRTC signaling between Mac App and JS Receiver [cite: 242, 243, 244, 267]
+                relayMessage(data);
                 break;
-                
-            case 'leave':
-                handleDisconnect(currentUser);
+
+            case 'status-update':
+                // Update user state for UI meters/icons [cite: 219, 240]
+                updateUserStatus(data);
                 break;
         }
     });
 
     ws.on('close', () => {
-        handleDisconnect(currentUser);
+        if (currentUser) {
+            console.log(`👋 ${currentUser.name} left.`);
+            rooms[currentUser.room] = rooms[currentUser.room].filter(u => u.id !== currentUser.id);
+            broadcastRoster(currentUser.room); // [cite: 238]
+        }
     });
 });
 
-function handleJoin(ws, msg, userContext) {
-    const { room, id, name, role, isMicEnabled, isBroadcasting } = msg;
-    userContext.id = id;
-    userContext.room = room;
+function relayMessage(data) {
+    const room = rooms[Object.keys(rooms).find(r => rooms[r].some(u => u.id === data.id))];
+    if (!room) return;
 
-    if (!rooms.has(room)) rooms.set(room, new Map());
-    const roomUsers = rooms.get(room);
+    const target = room.find(u => u.id === data.targetId);
+    if (target && target.ws.readyState === WebSocket.OPEN) {
+        target.ws.send(JSON.stringify(data));
+    }
+}
 
-    // 1. Store the new user state
-    const userData = { 
-        ws, id, name, role, 
-        isMicEnabled: isMicEnabled ?? true, 
-        isBroadcasting: isBroadcasting ?? false 
-    };
-    roomUsers.set(id, userData);
+function broadcastRoster(roomName) {
+    const room = rooms[roomName];
+    if (!room) return;
 
-    // 2. Send FULL ROSTER to the new joiner (Snapshot)
-    const fullRoster = Array.from(roomUsers.values()).map(u => ({
-        id: u.id, name: u.name, role: u.role,
-        isMicEnabled: u.isMicEnabled,
-        isBroadcasting: u.isBroadcasting
-    }));
-    
-    ws.send(JSON.stringify({
+    const rosterData = JSON.stringify({
         type: 'roster-update',
-        roster: fullRoster
-    }));
-
-    // 3. Notify OTHERS that a user joined (Incremental Update)
-    broadcastToRoom(room, id, {
-        type: 'user-joined',
-        id, name, role,
-        isMicEnabled: userData.isMicEnabled,
-        isBroadcasting: userData.isBroadcasting
+        roster: room.map(u => ({
+            id: u.id,
+            name: u.name,
+            role: u.role,
+            isMicEnabled: u.isMicEnabled,
+            isMusicEnabled: u.isMusicEnabled,
+            isBroadcasting: u.isBroadcasting
+        }))
     });
-}
 
-function handleStatusUpdate(userContext, msg) {
-    const roomUsers = rooms.get(userContext.room);
-    if (!roomUsers || !roomUsers.has(userContext.id)) return;
-
-    const user = roomUsers.get(userContext.id);
-    // Update local state
-    if (msg.isMicEnabled !== undefined) user.isMicEnabled = msg.isMicEnabled;
-    if (msg.isBroadcasting !== undefined) user.isBroadcasting = msg.isBroadcasting;
-
-    // Broadcast update to room
-    broadcastToRoom(userContext.room, userContext.id, {
-        type: 'status-update',
-        id: userContext.id,
-        isMicEnabled: user.isMicEnabled,
-        isBroadcasting: user.isBroadcasting
-    });
-}
-
-function handleDisconnect(userContext) {
-    if (!userContext.room || !userContext.id) return;
-    
-    const roomUsers = rooms.get(userContext.room);
-    if (roomUsers) {
-        roomUsers.delete(userContext.id);
-        broadcastToRoom(userContext.room, userContext.id, {
-            type: 'user-left',
-            id: userContext.id
-        });
-        
-        if (roomUsers.size === 0) rooms.delete(userContext.room);
-    }
-    userContext.id = null;
-    userContext.room = null;
-}
-
-function relaySignal(currentUser, msg) {
-    // If the message has a specific 'targetId', send only to them
-    const roomUsers = rooms.get(currentUser.room);
-    if (!roomUsers) return;
-
-    if (msg.targetId) {
-        const target = roomUsers.get(msg.targetId);
-        if (target && target.ws.readyState === WebSocket.OPEN) {
-            target.ws.send(JSON.stringify(msg));
+    room.forEach(u => {
+        if (u.ws.readyState === WebSocket.OPEN) {
+            u.ws.send(rosterData);
         }
-    } else {
-        // Fallback: Broadcast to everyone else (for legacy/mesh compatibility)
-        broadcastToRoom(currentUser.room, currentUser.id, msg);
-    }
-}
-
-function broadcastToRoom(roomName, senderId, msg) {
-    const roomUsers = rooms.get(roomName);
-    if (!roomUsers) return;
-
-    const json = JSON.stringify(msg);
-    for (const [id, user] of roomUsers) {
-        if (id !== senderId && user.ws.readyState === WebSocket.OPEN) {
-            user.ws.send(json);
-        }
-    }
-}
-
-// Heartbeat Interval (30s)
-setInterval(() => {
-    wss.clients.forEach((ws) => {
-        if (ws.isAlive === false) return ws.terminate();
-        ws.isAlive = false;
-        ws.ping();
     });
-}, 30000);
+}
 
-console.log(`Server running on port ${port}`);
+function updateUserStatus(data) {
+    const roomName = Object.keys(rooms).find(r => rooms[r].some(u => u.id === data.id));
+    if (!roomName) return;
+
+    const user = rooms[roomName].find(u => u.id === data.id);
+    if (user) {
+        user.isMicEnabled = data.isMicEnabled;
+        user.isMusicEnabled = data.isMusicEnabled;
+        broadcastRoster(roomName);
+    }
+}
+
+server.listen(PORT, () => {
+    console.log(`🚀 Server running on port ${PORT}`);
+});
