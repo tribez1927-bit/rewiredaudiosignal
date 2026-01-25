@@ -7,7 +7,7 @@
     <style>
         :root { --bg: #0a0a0a; --card: #161616; --accent: #007aff; --text: #ffffff; }
         body { font-family: -apple-system, system-ui; background: var(--bg); color: var(--text); display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; margin: 0; padding: 20px; box-sizing: border-box; }
-        .container { background: var(--card); padding: 30px; border-radius: 24px; text-align: center; width: 100%; max-width: 360px; box-shadow: 0 20px 40px rgba(0,0,0,0.4); border: 1px solid #333; position: relative; }
+        .container { background: var(--card); padding: 30px; border-radius: 24px; text-align: center; width: 100%; max-width: 360px; box-shadow: 0 20px 40px rgba(0,0,0,0.4); border: 1px solid #333; }
         h1 { font-size: 1.1rem; font-weight: 600; margin-bottom: 4px; color: #fff; text-transform: uppercase; letter-spacing: 1px; }
         
         .subtitle { font-size: 0.8rem; color: #888; margin-bottom: 20px; }
@@ -25,7 +25,6 @@
         .status.online { color: #34c759; }
         .status.connecting { color: #ff9500; }
         .status.error { color: #ff3b30; }
-        .status.paused { color: #ffcc00; }
 
         .roster-container { margin-top: 20px; text-align: left; border-top: 1px solid #333; padding-top: 15px; }
         .roster-title { font-size: 0.7rem; color: #555; font-weight: bold; margin-bottom: 10px; text-transform: uppercase; }
@@ -38,12 +37,6 @@
         button { background: var(--accent); color: white; border: none; padding: 16px; border-radius: 14px; font-size: 1rem; font-weight: 600; cursor: pointer; width: 100%; -webkit-tap-highlight-color: transparent; }
         button:disabled { background: #333; color: #666; }
         button:active { transform: scale(0.98); }
-        
-        /* Mute/Pause Overlay */
-        #control-bar { display: none; margin-top: 15px; justify-content: center; gap: 10px; }
-        .icon-btn { background: #333; width: 50px; height: 50px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 24px; cursor: pointer; border: 1px solid #444; }
-        .icon-btn.active { background: #007aff; border-color: #007aff; }
-        .icon-btn.paused { background: #ffcc00; color: #000; border-color: #ffcc00; }
         
         #debug-console { width: 100%; max-width: 360px; height: 120px; background: #000; color: #0f0; font-family: monospace; font-size: 10px; padding: 10px; margin-top: 20px; border-radius: 8px; overflow-y: auto; border: 1px solid #333; text-align: left; }
     </style>
@@ -72,12 +65,6 @@
 
     <div id="status" class="status">Idle</div>
     <button id="join-btn">Listen Live</button>
-    
-    <div id="control-bar">
-        <button id="mute-btn" class="icon-btn active" title="Toggle Playback">
-            🔊
-        </button>
-    </div>
 
     <div class="roster-container" id="roster-view" style="display:none;">
         <div class="roster-title">Room Roster</div>
@@ -99,10 +86,7 @@
     const statusLabel = document.getElementById('status');
     const subtitleLabel = document.getElementById('subtitle');
     const rosterList = document.getElementById('roster-list');
-    const audioEl = document.getElementById('remote-audio');
-    const muteBtn = document.getElementById('mute-btn');
-    const controlBar = document.getElementById('control-bar');
-
+    
     // 2. Safe ID Generator
     function generateId() {
         if (typeof crypto !== 'undefined' && crypto.randomUUID) {
@@ -120,7 +104,6 @@
     const serverUrl = getServerUrl();
     
     let socket, pc, audioCtx;
-    let isPlaying = true;
 
     function log(msg, type = 'info') {
         const entry = document.createElement('div');
@@ -133,31 +116,6 @@
 
     log(`System Ready. ID: ${myId.substring(0,4)}...`);
     log(`Target Server: ${serverUrl}`);
-
-    // --- PAUSE / RESUME LOGIC ---
-    muteBtn.addEventListener('click', () => {
-        if (audioEl.paused) {
-            // RESUME
-            audioEl.play().then(() => {
-                muteBtn.innerHTML = "🔊";
-                muteBtn.className = "icon-btn active";
-                statusLabel.innerText = "Live Stream Active";
-                statusLabel.className = "status online";
-                log("Audio Resumed ▶️");
-                
-                // Ensure context is running (iOS fix)
-                if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
-            }).catch(e => log(`Resume Failed: ${e.message}`, 'error'));
-        } else {
-            // PAUSE
-            audioEl.pause();
-            muteBtn.innerHTML = "⏸️";
-            muteBtn.className = "icon-btn paused";
-            statusLabel.innerText = "Playback Paused";
-            statusLabel.className = "status paused";
-            log("Audio Paused ⏸️");
-        }
-    });
 
     document.getElementById('join-btn').addEventListener('click', async () => {
         log("Button Clicked. Starting...");
@@ -220,7 +178,7 @@
                     break;
             }
         };
-
+        
         socket.onerror = (e) => {
             log("WebSocket Error. Check Server URL.", "error");
             statusLabel.innerText = "Server Error";
@@ -238,6 +196,7 @@
     function updateRosterUI(roster) {
         rosterList.innerHTML = '';
         document.getElementById('roster-view').style.display = 'block';
+        
         roster.forEach(peer => {
             const item = document.createElement('li');
             item.className = 'roster-item';
@@ -270,16 +229,8 @@
             log("Audio Track Received! 🔈");
             document.getElementById('inputs').style.display = 'none';
             document.getElementById('meter-display').style.display = 'flex';
-            
-            // Show Mute Controls
-            controlBar.style.display = "flex";
-
             document.getElementById('remote-audio').srcObject = event.streams[0];
-            
-            // --- INJECTED FUNCTIONALITY START ---
             setupMetering(event.streams[0]);
-            startDiagnostics(event.streams[0], pc);
-            // --- INJECTED FUNCTIONALITY END ---
         };
 
         await pc.setRemoteDescription(new RTCSessionDescription({ type: "offer", sdp: sdp }));
@@ -295,19 +246,19 @@
     function setupMetering(stream) {
         // [FIX] Audio routing for iPhone/iOS
         const source = audioCtx.createMediaStreamSource(stream);
+        
         // 1. CRITICAL: Connect Source to Destination (Speakers) so audio plays
         source.connect(audioCtx.destination);
-        
+
         // 2. Connect Source to Splitter for Metering
         const splitter = audioCtx.createChannelSplitter(2);
         source.connect(splitter);
-
+        
         const analyze = (idx, el) => {
             const proc = audioCtx.createAnalyser();
             proc.fftSize = 256;
             splitter.connect(proc, idx);
             const data = new Uint8Array(proc.frequencyBinCount);
-            
             const draw = () => {
                 proc.getByteFrequencyData(data);
                 const avg = data.reduce((a, b) => a + b) / data.length;
@@ -316,68 +267,8 @@
             };
             draw();
         };
-
         analyze(0, document.getElementById('fill-l'));
         analyze(1, document.getElementById('fill-r'));
-    }
-
-    // --- NEW DIAGNOSTIC FUNCTION ---
-    function startDiagnostics(stream, peerConnection) {
-        log("🕵️ Diagnostics Started: Monitor enabled", "info");
-
-        // 1. Digital Silence Detection (Source Issue)
-        // We create a SEPARATE analyser to avoid messing with visualizers
-        const analyser = audioCtx.createAnalyser();
-        analyser.fftSize = 256; 
-        const source = audioCtx.createMediaStreamSource(stream);
-        source.connect(analyser); // Monitor stream
-
-        const dataArray = new Uint8Array(analyser.frequencyBinCount);
-        let silenceCount = 0;
-
-        setInterval(() => {
-            analyser.getByteTimeDomainData(dataArray);
-            
-            // Check for "128" (Zero in 8-bit PCM)
-            let isDigitalSilence = true;
-            for(let i=0; i<dataArray.length; i++) {
-                if(dataArray[i] !== 128) { isDigitalSilence = false; break; }
-            }
-
-            if (isDigitalSilence) {
-                silenceCount++;
-                // 20 checks * 100ms = 2 seconds of pure zeros
-                if (silenceCount === 20) {
-                    log("🔇 ALERT: Digital Silence Detected! (Logic Output is 0)", "error");
-                }
-            } else {
-                if (silenceCount >= 20) {
-                    log("🔊 Audio Recovered", "info");
-                }
-                silenceCount = 0;
-            }
-        }, 100);
-
-        // 2. Network Health Monitor (Transport Issue)
-        setInterval(async () => {
-            if (peerConnection.connectionState !== 'connected') return;
-
-            const stats = await peerConnection.getStats();
-            stats.forEach(report => {
-                if (report.type === 'inbound-rtp' && report.kind === 'audio') {
-                    const lost = report.packetsLost;
-                    const jitter = report.jitter;
-
-                    // Only log if significant issues are detected
-                    if (lost > 5 && Math.random() > 0.9) { // Throttle logs
-                        log(`⚠️ PACKET LOSS: ${lost} packets`, "warn");
-                    }
-                    if (jitter > 0.1 && Math.random() > 0.9) {
-                        log(`⚠️ HIGH JITTER: ${(jitter * 1000).toFixed(0)}ms`, "warn");
-                    }
-                }
-            });
-        }, 1000);
     }
 </script>
 </body>
