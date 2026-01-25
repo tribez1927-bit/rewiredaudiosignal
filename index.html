@@ -228,12 +228,10 @@
             log("Audio Track Received! 🔈");
             document.getElementById('inputs').style.display = 'none';
             document.getElementById('meter-display').style.display = 'flex';
-            document.getElementById('remote-audio').srcObject = event.streams[0];
             
-            // --- INJECTED FUNCTIONALITY START ---
-            setupMetering(event.streams[0]);
-            startDiagnostics(event.streams[0], pc);
-            // --- INJECTED FUNCTIONALITY END ---
+            // --- UNIFIED AUDIO PIPELINE START ---
+            setupUnifiedAudio(event.streams[0], pc);
+            // --- UNIFIED AUDIO PIPELINE END ---
         };
 
         await pc.setRemoteDescription(new RTCSessionDescription({ type: "offer", sdp: sdp }));
@@ -246,16 +244,42 @@
         socket.send(JSON.stringify({ type: "answer", sdp: answer.sdp, id: myId, targetId: senderId }));
     }
 
-    function setupMetering(stream) {
-        // [FIX] Audio routing for iPhone/iOS
+    // --- UNIFIED PIPELINE (Fixes Regressions) ---
+    function setupUnifiedAudio(stream, peerConnection) {
+        // 1. Playback Element (HTML5 Audio) - Required for background audio on some OS
+        const audioEl = document.getElementById('remote-audio');
+        audioEl.srcObject = stream;
+        
+        // 2. Web Audio API (Everything else)
+        if (!audioCtx) return;
+        
+        // Resume if suspended (common iOS issue)
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+
+        // CREATE SOURCE ONCE
+        // Creating multiple MediaStreamSources from the same stream causes glitches on mobile
         const source = audioCtx.createMediaStreamSource(stream);
-        // 1. CRITICAL: Connect Source to Destination (Speakers) so audio plays
+
+        // A. Route to Speakers (Hear it)
         source.connect(audioCtx.destination);
         
-        // 2. Connect Source to Splitter for Metering
+        // B. Route to Metering (See it)
         const splitter = audioCtx.createChannelSplitter(2);
         source.connect(splitter);
+        setupStereoMeters(splitter);
+        
+        // C. Route to Diagnostics (Monitor Silence)
+        // We reuse the metering splitter or create a dedicated analyser
+        const diagAnalyser = audioCtx.createAnalyser();
+        diagAnalyser.fftSize = 256;
+        source.connect(diagAnalyser);
+        startSilenceMonitor(diagAnalyser);
+        
+        // D. Start Network Monitor
+        startNetworkMonitor(peerConnection);
+    }
 
+    function setupStereoMeters(splitter) {
         const analyze = (idx, el) => {
             const proc = audioCtx.createAnalyser();
             proc.fftSize = 256;
@@ -275,24 +299,12 @@
         analyze(1, document.getElementById('fill-r'));
     }
 
-    // --- NEW DIAGNOSTIC FUNCTION ---
-    function startDiagnostics(stream, peerConnection) {
-        log("🕵️ Diagnostics Started: Monitor enabled", "info");
-
-        // 1. Digital Silence Detection (Source Issue)
-        // We create a SEPARATE analyser to avoid messing with visualizers
-        const analyser = audioCtx.createAnalyser();
-        analyser.fftSize = 256; 
-        const source = audioCtx.createMediaStreamSource(stream);
-        source.connect(analyser); // Monitor stream
-
+    function startSilenceMonitor(analyser) {
         const dataArray = new Uint8Array(analyser.frequencyBinCount);
         let silenceCount = 0;
 
         setInterval(() => {
             analyser.getByteTimeDomainData(dataArray);
-            
-            // Check for "128" (Zero in 8-bit PCM)
             let isDigitalSilence = true;
             for(let i=0; i<dataArray.length; i++) {
                 if(dataArray[i] !== 128) { isDigitalSilence = false; break; }
@@ -300,35 +312,26 @@
 
             if (isDigitalSilence) {
                 silenceCount++;
-                // 20 checks * 100ms = 2 seconds of pure zeros
-                if (silenceCount === 20) {
+                if (silenceCount === 20) { // ~2 seconds
                     log("🔇 ALERT: Digital Silence Detected! (Logic Output is 0)", "error");
                 }
             } else {
-                if (silenceCount >= 20) {
-                    log("🔊 Audio Recovered", "info");
-                }
+                if (silenceCount >= 20) log("🔊 Audio Recovered", "info");
                 silenceCount = 0;
             }
         }, 100);
+    }
 
-        // 2. Network Health Monitor (Transport Issue)
+    function startNetworkMonitor(peerConn) {
         setInterval(async () => {
-            if (peerConnection.connectionState !== 'connected') return;
-
-            const stats = await peerConnection.getStats();
+            if (peerConn.connectionState !== 'connected') return;
+            const stats = await peerConn.getStats();
             stats.forEach(report => {
                 if (report.type === 'inbound-rtp' && report.kind === 'audio') {
                     const lost = report.packetsLost;
                     const jitter = report.jitter;
-
-                    // Only log if significant issues are detected
-                    if (lost > 5 && Math.random() > 0.9) { // Throttle logs
-                        log(`⚠️ PACKET LOSS: ${lost} packets`, "warn");
-                    }
-                    if (jitter > 0.1 && Math.random() > 0.9) {
-                        log(`⚠️ HIGH JITTER: ${(jitter * 1000).toFixed(0)}ms`, "warn");
-                    }
+                    if (lost > 5 && Math.random() > 0.9) log(`⚠️ LOSS: ${lost} pkts`, "warn");
+                    if (jitter > 0.1 && Math.random() > 0.9) log(`⚠️ JITTER: ${(jitter*1000).toFixed(0)}ms`, "warn");
                 }
             });
         }, 1000);
