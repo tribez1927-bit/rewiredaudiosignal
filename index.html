@@ -8,7 +8,7 @@
         :root { 
             --bg: #000000; --card: #1c1c1e; --accent: #0a84ff; 
             --text: #f2f2f7; --danger: #ff453a; --success: #32d74b; 
-            --warn: #ffd60a; --ice: #bd53ed; --sig: #8e8e93;
+            --warn: #ffd60a; --ice: #bd53ed; --sig: #8e8e93; --vol: #00ffcc;
         }
         body { 
             font-family: -apple-system, system-ui; background: var(--bg); color: var(--text); 
@@ -63,7 +63,6 @@
         .role-icon.sender { color: var(--accent); }
         .roster-name { font-size: 0.9rem; font-weight: 500; color: #eee; }
         
-        /* Connection Status Dot */
         .peer-dot { width: 6px; height: 6px; border-radius: 50%; background: #000; border: 1px solid #444; }
         .peer-dot.connected { background: var(--success); border-color: var(--success); }
         .peer-dot.failed { background: var(--danger); border-color: var(--danger); }
@@ -83,6 +82,7 @@
         .log-mic { color: #d63aff; }
         .log-ice { color: var(--ice); }
         .log-sig { color: var(--sig); }
+        .log-vol { color: var(--vol); }
         .log-fix { color: var(--success); font-weight: bold; }
     </style>
 </head>
@@ -143,7 +143,7 @@
     let ws, audioCtx, analyser;
     let studioPC;
     const voicePeerConnections = {}; 
-    const initializingPeers = new Set(); // Prevent double-dialing
+    const initializingPeers = new Set();
     
     let isConnected = false, isMuted = false, isTalking = false, needsRepair = false;
     let localVoiceStream = null;
@@ -159,6 +159,7 @@
     const btnMute = document.getElementById('btn-mute');
     const btnTalk = document.getElementById('btn-talk');
     
+    // ICONS
     const ICON_MIC = `<svg viewBox="0 0 24 24"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/><path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/></svg>`;
     const ICON_HEADPHONES = `<svg viewBox="0 0 24 24"><path d="M12 3c-4.97 0-9 4.03-9 9v7c0 1.1.9 2 2 2h4v-8H5v-1c0-3.87 3.13-7 7-7s7 3.13 7 7v1h-4v8h4c1.1 0 2-.9 2-2v-7c0-4.97-4.03-9-9-9z"/></svg>`;
     const ICON_WAVE = `<svg viewBox="0 0 24 24"><path d="M14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77zm-4 0h-2.5l-5 5H0v6h2.5l5 5H10V3.23z"/></svg>`;
@@ -169,6 +170,36 @@
         line.innerText = `[${new Date().toLocaleTimeString().split(' ')[0]}] ${msg}`;
         if(type) line.className=`log-${type}`;
         logEl.prepend(line);
+    }
+
+    // --- AUDIO DEBUGGING ---
+    function monitorAudioLevel(stream, label) {
+        if (!audioCtx) return;
+        try {
+            const src = audioCtx.createMediaStreamSource(stream);
+            const analyzer = audioCtx.createAnalyser();
+            analyzer.fftSize = 256;
+            src.connect(analyzer);
+            
+            const data = new Uint8Array(analyzer.frequencyBinCount);
+            let frames = 0;
+            
+            const timer = setInterval(() => {
+                if(!stream.active) { clearInterval(timer); return; }
+                
+                analyzer.getByteFrequencyData(data);
+                let sum = 0;
+                for(let i=0; i<data.length; i++) sum += data[i];
+                const avg = sum / data.length;
+                
+                // Only log if signal detected (>5% level)
+                if (avg > 5 && ++frames % 4 === 0) { // log every ~1-2s if active
+                    log(`[VOL] ${label}: ${avg.toFixed(0)}%`, "vol");
+                }
+            }, 500);
+        } catch(e) {
+            log(`Audio Monitor Error: ${e.message}`, "err");
+        }
     }
 
     // --- MAIN ACTION ---
@@ -196,6 +227,10 @@
                     });
                     localVoiceStream.getAudioTracks().forEach(t => t.enabled = false);
                     log("🎙 Mic Ready (Muted)", "mic");
+                    
+                    // Attach Monitor
+                    monitorAudioLevel(localVoiceStream, "Local Mic");
+                    
                 } catch(e) {
                     log("🚫 Mic Failed: " + e.message, "err");
                     localVoiceStream = null;
@@ -228,11 +263,10 @@
     // --- REPAIR / TALK ---
     btnTalk.addEventListener('click', () => {
         if (needsRepair) {
-            log("[FIX] 🔧 Repairing IPv4 connections...", "log-fix");
+            log("[FIX] 🔧 Repairing...", "log-fix");
             for(let id in voicePeerConnections) {
                 const session = voicePeerConnections[id];
                 if (session.pc.connectionState === 'failed' || session.pc.connectionState === 'disconnected') {
-                    log(`[FIX] Restarting ICE for ${id.substring(0,4)}...`, "log-fix");
                     session.pc.restartIce();
                     session.pc.createOffer({ iceRestart: true }).then(offer => {
                         session.pc.setLocalDescription(offer);
@@ -297,8 +331,6 @@
     // --- VOICE MESH ---
     function getVoicePC(peerId) {
         if(!voicePeerConnections[peerId]) {
-            // log(`[MESH] Creating PC for ${peerId.substring(0,4)}`, "info");
-            
             const pc = new RTCPeerConnection({ 
                 iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
                 iceTransportPolicy: 'all', 
@@ -311,18 +343,26 @@
 
             pc.ontrack = e => {
                 log(`🗣 Audio from ${peerId.substring(0,4)}`, "info");
+                
+                // Monitor Remote Level
+                monitorAudioLevel(e.streams[0], `Rx ${peerId.substring(0,4)}`);
+                
                 const aud = document.createElement('audio');
                 aud.srcObject = e.streams[0];
                 aud.autoplay = true;
                 aud.playsInline = true;
+                
+                // Debug Element State
+                aud.onplay = () => log(`[PLAY] Audio started for ${peerId.substring(0,4)}`, "info");
+                aud.onpause = () => log(`[PAUSE] Audio paused for ${peerId.substring(0,4)}`, "warn");
+                
                 document.getElementById('voice-container').appendChild(aud);
             };
 
             pc.onicecandidate = e => {
                 if(e.candidate) {
                     const ip = e.candidate.candidate.split(' ')[4];
-                    if(ip.includes(':')) return; // SKIP IPv6
-                    // log(`[ICE] 📤 Local IPv4: ${ip}`, "ice");
+                    if(ip.includes(':')) return; 
                     ws.send(JSON.stringify({ type: 'candidate', ...e.candidate.toJSON(), id: myId, targetId: peerId }));
                 }
             };
@@ -330,10 +370,7 @@
             pc.oniceconnectionstatechange = () => {
                 const state = pc.iceConnectionState;
                 log(`[ICE] ${peerId.substring(0,4)} State: ${state}`, state==='failed'?'err':'ice');
-                if (state === 'failed' || state === 'disconnected') {
-                    needsRepair = true;
-                    updateButtons();
-                }
+                if (state === 'failed' || state === 'disconnected') { needsRepair = true; updateButtons(); }
             };
 
             voicePeerConnections[peerId] = { pc: pc, candidates: [] };
@@ -347,13 +384,7 @@
 
         try {
             if(msg.type === 'offer') {
-                log(`📥 Offer from ${msg.id.substring(0,4)}`, "sig");
-                // CRITICAL: Avoid state errors
-                if(pc.signalingState !== 'stable') {
-                    log(`[WARN] Ignoring offer (State: ${pc.signalingState})`, "warn");
-                    return;
-                }
-                
+                if(pc.signalingState !== 'stable') return;
                 await pc.setRemoteDescription(new RTCSessionDescription({ type: 'offer', sdp: msg.sdp }));
                 while(session.candidates.length) pc.addIceCandidate(session.candidates.shift());
                 const answer = await pc.createAnswer();
@@ -361,18 +392,13 @@
                 ws.send(JSON.stringify({ type: 'answer', sdp: answer.sdp, id: myId, targetId: msg.id }));
             }
             else if(msg.type === 'answer') {
-                log(`📥 Answer from ${msg.id.substring(0,4)}`, "sig");
-                if(pc.signalingState !== 'have-local-offer') {
-                     log(`[WARN] Ignoring answer (State: ${pc.signalingState})`, "warn");
-                     return;
-                }
+                if(pc.signalingState !== 'have-local-offer') return;
                 await pc.setRemoteDescription(new RTCSessionDescription({ type: 'answer', sdp: msg.sdp }));
                 while(session.candidates.length) pc.addIceCandidate(session.candidates.shift());
             }
             else if(msg.type === 'candidate') {
                 const ip = msg.candidate.split(' ')[4];
-                if(ip.includes(':')) return; // Ignore Remote IPv6
-                // log(`[ICE] 📥 Remote IPv4: ${ip}`, "ice");
+                if(ip.includes(':')) return; 
                 if(pc.remoteDescription) pc.addIceCandidate(msg);
                 else session.candidates.push(msg);
             }
@@ -389,12 +415,9 @@
 
         roster.forEach(peer => {
             if(peer.id === myId || peer.id === broadcasterId) return;
-            
-            // PREVENT DUPLICATE CALLS
             if(myId < peer.id && !voicePeerConnections[peer.id] && !initializingPeers.has(peer.id)) {
                 initializingPeers.add(peer.id);
                 setTimeout(() => {
-                    log(`📞 Calling ${peer.name}...`, "info");
                     const session = getVoicePC(peer.id);
                     session.pc.createOffer().then(offer => {
                         session.pc.setLocalDescription(offer);
@@ -435,7 +458,7 @@
         });
     }
 
-    // STUDIO
+    // STUDIO (Same)
     async function handleStudioMsg(msg) {
         if(msg.type === 'offer') {
             if(studioPC) studioPC.close();
