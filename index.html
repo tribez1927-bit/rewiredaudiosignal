@@ -15,7 +15,6 @@
             --warn: #ffd60a; 
         }
         
-        /* LAYOUT FIX: Prevent overflow */
         body { 
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; 
             background: var(--bg); 
@@ -26,14 +25,14 @@
             justify-content: center; 
             min-height: 100vh; 
             margin: 0; 
-            padding: 16px; /* Reduced padding for mobile */
+            padding: 16px; 
             box-sizing: border-box; 
             overflow-x: hidden;
         }
         
         .container { 
             background: var(--card); 
-            padding: 24px 20px; /* Tighter padding */
+            padding: 24px 20px; 
             border-radius: 20px; 
             width: 100%; 
             max-width: 380px; 
@@ -56,29 +55,9 @@
         .status-text { font-size: 0.75rem; font-weight: 600; color: #fff; letter-spacing: 0.5px; line-height: 1; white-space: nowrap; }
         
         /* MINI METERS */
-        .mini-meters {
-            display: none; 
-            gap: 2px;
-            margin-left: 10px;
-            height: 10px;
-            align-items: flex-end;
-        }
-        .mini-meter-col {
-            width: 4px;
-            height: 100%;
-            background: #333;
-            border-radius: 1px;
-            position: relative;
-            overflow: hidden;
-        }
-        .mini-meter-fill {
-            width: 100%;
-            position: absolute;
-            bottom: 0;
-            background: var(--success);
-            height: 0%;
-            transition: height 0.05s ease-out;
-        }
+        .mini-meters { display: none; gap: 2px; margin-left: 10px; height: 10px; align-items: flex-end; }
+        .mini-meter-col { width: 4px; height: 100%; background: #333; border-radius: 1px; position: relative; overflow: hidden; }
+        .mini-meter-fill { width: 100%; position: absolute; bottom: 0; background: var(--success); height: 0%; transition: height 0.05s ease-out; }
 
         .bitrate { font-family: "SF Mono", monospace; font-size: 0.7rem; color: #666; font-weight: 500; margin-top: 4px; }
 
@@ -87,8 +66,7 @@
         input { 
             flex: 1; background: #2c2c2e; border: none; color: white; 
             padding: 14px; border-radius: 12px; font-size: 15px; outline: none; 
-            text-align: center; transition: background 0.2s;
-            min-width: 0; /* Flexbox overflow fix */
+            text-align: center; transition: background 0.2s; min-width: 0; 
         }
         input:focus { background: #3a3a3c; }
 
@@ -99,8 +77,7 @@
             flex: 1; padding: 16px; border-radius: 14px; border: none;
             font-weight: 600; font-size: 1rem; cursor: pointer; color: white;
             transition: all 0.2s; -webkit-tap-highlight-color: transparent;
-            background: var(--accent);
-            height: 56px;
+            background: var(--accent); height: 56px;
         }
         #btn-main:active { opacity: 0.8; transform: scale(0.98); }
         #btn-main:disabled { background: #3a3a3c; color: #666; cursor: wait; }
@@ -109,24 +86,39 @@
         #btn-mute { 
             width: 56px; height: 56px; border-radius: 14px; border: none;
             background: #2c2c2e; color: #8e8e93; cursor: pointer;
-            display: none;
-            align-items: center; justify-content: center;
-            transition: all 0.2s; -webkit-tap-highlight-color: transparent;
-            flex-shrink: 0;
+            display: none; align-items: center; justify-content: center;
+            transition: all 0.2s; -webkit-tap-highlight-color: transparent; flex-shrink: 0;
         }
         #btn-mute:active { transform: scale(0.95); }
         #btn-mute.active { background: #fff; color: #000; }
         
         svg { width: 24px; height: 24px; fill: currentColor; }
 
+        /* ROSTER STYLES */
+        #roster-panel { width: 100%; display: none; flex-direction: column; gap: 8px; border-top: 1px solid #333; padding-top: 15px; }
+        .roster-header { font-size: 0.7rem; color: #666; font-weight: 700; text-transform: uppercase; margin-bottom: 4px; }
+        
+        .roster-item { 
+            display: flex; align-items: center; justify-content: space-between;
+            background: #252527; padding: 10px 12px; border-radius: 10px;
+        }
+        .roster-left { display: flex; align-items: center; gap: 10px; }
+        .role-icon { width: 18px; height: 18px; color: #555; }
+        .role-icon.sender { color: var(--accent); }
+        .roster-name { font-size: 0.9rem; font-weight: 500; color: #eee; }
+        .roster-tag { font-size: 0.7rem; color: #888; margin-left: 6px; }
+        
+        .roster-status { width: 16px; height: 16px; color: #444; }
+        .roster-status.active { color: var(--success); }
+        .roster-status.muted { color: var(--danger); }
+
         /* LOGS */
         #console { 
-            height: 120px; background: #000; border-radius: 8px; border: 1px solid #333;
+            height: 100px; background: #000; border-radius: 8px; border: 1px solid #333;
             padding: 10px; font-family: "SF Mono", monospace; font-size: 10px; 
             color: #636366; overflow-y: auto; width: 100%; box-sizing: border-box;
         }
         .log-err { color: var(--danger); }
-        .log-warn { color: var(--warn); }
     </style>
 </head>
 <body>
@@ -161,6 +153,12 @@
             <svg id="icon-mute" viewBox="0 0 24 24" style="display:none"><path d="M19 12c0 1.72-1.02 3.22-2.5 4v2.15c2.34-.99 4-3.32 4-6.15 0-2.83-1.66-5.16-4-6.15V8c1.48.78 2.5 2.28 2.5 4zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06c1.38-.31 2.63-.95 3.69-1.81L19.73 21 21 19.73 4.27 3zM12 4L9.91 6.09 12 8.18V4z"/></svg>
         </button>
     </div>
+
+    <div id="roster-panel">
+        <div class="roster-header">Participants</div>
+        <div id="roster-list">
+            </div>
+    </div>
     
     <div id="console"></div>
 </div>
@@ -185,16 +183,24 @@
     const statusText = document.getElementById('status-text');
     const bitrateEl = document.getElementById('bitrate');
     const miniMeters = document.getElementById('mini-meters');
-    const audioEl = document.getElementById('audio-tag'); // The Source of Truth for Sound
+    const audioEl = document.getElementById('audio-tag');
     
     const btnMain = document.getElementById('btn-main');
     const btnMute = document.getElementById('btn-mute');
     const iconVol = document.getElementById('icon-vol');
     const iconMute = document.getElementById('icon-mute');
     const inputPanel = document.getElementById('setup-panel');
+    const rosterPanel = document.getElementById('roster-panel');
+    const rosterList = document.getElementById('roster-list');
     const meterL = document.getElementById('m-l');
     const meterR = document.getElementById('m-r');
     
+    // SF SYMBOL PATHS
+    const ICON_MIC = `<svg viewBox="0 0 24 24"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/><path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/></svg>`;
+    const ICON_HEADPHONES = `<svg viewBox="0 0 24 24"><path d="M12 3c-4.97 0-9 4.03-9 9v7c0 1.1.9 2 2 2h4v-8H5v-1c0-3.87 3.13-7 7-7s7 3.13 7 7v1h-4v8h4c1.1 0 2-.9 2-2v-7c0-4.97-4.03-9-9-9z"/></svg>`;
+    const ICON_WAVE = `<svg viewBox="0 0 24 24"><path d="M14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77zm-4 0h-2.5l-5 5H0v6h2.5l5 5H10V3.23z"/></svg>`;
+    const ICON_SLASH = `<svg viewBox="0 0 24 24"><path d="M19 12c0 1.72-1.02 3.22-2.5 4v2.15c2.34-.99 4-3.32 4-6.15 0-2.83-1.66-5.16-4-6.15V8c1.48.78 2.5 2.28 2.5 4zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06c1.38-.31 2.63-.95 3.69-1.81L19.73 21 21 19.73 4.27 3zM12 4L9.91 6.09 12 8.18V4z"/></svg>`;
+
     function log(msg, type='info') {
         const line = document.createElement('div');
         line.textContent = `> ${msg}`;
@@ -213,12 +219,9 @@
             setUIState('connecting');
             
             try {
-                // 1. Prepare Audio Context (Metering)
                 audioCtx = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: 'interactive', sampleRate: 48000 });
                 await audioCtx.resume();
                 
-                // 2. Prepare Audio Element (Hearing)
-                // We must "touch" the element in a user event to unlock it on iOS
                 audioEl.srcObject = null;
                 audioEl.muted = false;
                 audioEl.volume = 1.0;
@@ -235,7 +238,7 @@
             if (pc) pc.close();
             if (audioCtx) audioCtx.close();
             
-            audioEl.srcObject = null; // Stop playback
+            audioEl.srcObject = null;
             
             clearInterval(statsInterval);
             cancelAnimationFrame(animationId);
@@ -246,8 +249,6 @@
     // --- BUTTON HANDLER: MUTE ---
     btnMute.addEventListener('click', () => {
         isMuted = !isMuted;
-        
-        // Control HTML5 Audio Element Directly
         audioEl.muted = isMuted;
         
         if (isMuted) {
@@ -258,6 +259,16 @@
             btnMute.className = "active"; 
             iconVol.style.display = "block";
             iconMute.style.display = "none";
+        }
+        
+        // Notify Server of state change (so others see it in roster)
+        if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({
+                type: 'status-update',
+                id: myId,
+                isMicEnabled: false, // We are a receiver, no mic
+                isMusicEnabled: !isMuted // Music enabled = not muted
+            }));
         }
     });
 
@@ -271,6 +282,7 @@
             inputPanel.style.opacity = "0.5";
             miniMeters.style.display = "none";
             btnMute.style.display = "none";
+            rosterPanel.style.display = "none";
         }
         else if (state === 'connected') {
             isConnected = true;
@@ -283,7 +295,8 @@
             
             inputPanel.style.display = "none";
             miniMeters.style.display = "flex"; 
-            btnMute.style.display = "flex";   
+            btnMute.style.display = "flex";
+            rosterPanel.style.display = "flex"; // Show Roster
         }
         else if (state === 'disconnected') {
             isConnected = false;
@@ -299,10 +312,12 @@
             inputPanel.style.opacity = "1";
             
             miniMeters.style.display = "none"; 
-            btnMute.style.display = "none";    
+            btnMute.style.display = "none"; 
+            rosterPanel.style.display = "none"; // Hide Roster
             
             meterL.style.height = "0%";
             meterR.style.height = "0%";
+            rosterList.innerHTML = "";
         }
     }
 
@@ -312,11 +327,25 @@
         
         ws.onopen = () => {
             log("Server Connected");
-            ws.send(JSON.stringify({ type: 'join', room, name: user, id: myId, role: 'receiver' }));
+            ws.send(JSON.stringify({ 
+                type: 'join', 
+                room: room, 
+                name: user, 
+                id: myId, 
+                role: 'receiver',
+                isBroadcasting: false
+            }));
         };
         
         ws.onmessage = async (e) => {
             const msg = JSON.parse(e.data);
+            
+            // Handle Roster Updates
+            if (msg.type === 'roster-update') {
+                renderRoster(msg.roster);
+                return;
+            }
+
             if (msg.id === myId) return;
             if (msg.type === 'offer') handleOffer(msg.sdp, msg.id);
             else if (msg.type === 'candidate' && pc) pc.addIceCandidate(msg);
@@ -326,6 +355,49 @@
             log("Server Disconnected", "err");
             setUIState('disconnected');
         };
+    }
+
+    // --- ROSTER RENDERER ---
+    function renderRoster(roster) {
+        rosterList.innerHTML = '';
+        roster.forEach(user => {
+            const div = document.createElement('div');
+            div.className = 'roster-item';
+            
+            // Identify if this is "Me"
+            const isMe = user.id === myId;
+            const displayName = isMe ? `${user.name} (You)` : user.name;
+            
+            // Icon Logic: Broadcasting (Sender) vs Listener (Receiver)
+            // 'isBroadcasting' flag comes from the Sender app / server.
+            const isSender = user.isBroadcasting;
+            const leftIcon = isSender ? ICON_MIC : ICON_HEADPHONES;
+            const iconClass = isSender ? 'role-icon sender' : 'role-icon';
+            
+            // Status Logic: Sending Audio (Wave) vs Muted (Slash)
+            // For sender: isMicEnabled / isMusicEnabled
+            // For receiver: we infer from local mute state logic sent to server
+            let isActive = true;
+            if (isSender) {
+                // If it's a broadcaster, check if music or mic is enabled
+                isActive = user.isMusicEnabled;
+            } else {
+                // For listeners, usually assume active unless they report mute
+                isActive = user.isMusicEnabled !== false;
+            }
+            
+            const rightIcon = isActive ? ICON_WAVE : ICON_SLASH;
+            const statusClass = isActive ? 'roster-status active' : 'roster-status muted';
+
+            div.innerHTML = `
+                <div class="roster-left">
+                    <div class="${iconClass}">${leftIcon}</div>
+                    <span class="roster-name">${displayName}</span>
+                </div>
+                <div class="${statusClass}">${rightIcon}</div>
+            `;
+            rosterList.appendChild(div);
+        });
     }
 
     // --- WEBRTC ---
@@ -354,34 +426,19 @@
         ws.send(JSON.stringify({ type: 'answer', sdp: answer.sdp, id: myId, targetId: senderId }));
     }
 
-    // --- DUAL PIPELINE STRATEGY ---
     function setupDualPipeline(stream) {
-        // PATH A: HEARING (Reliable Playback)
-        // We assign the stream directly to the audio element.
         audioEl.srcObject = stream;
-        
-        // Ensure mute state matches UI (resets on new connection)
         audioEl.muted = isMuted;
-        
-        // Force play
         audioEl.play().catch(e => log("Autoplay blocked: " + e.message, "warn"));
 
-        // PATH B: SEEING (Metering)
-        // We clone the stream so the Analyser doesn't interfere with the Player
         if (audioCtx.state === 'suspended') audioCtx.resume();
         
         try {
-            // Use clone to prevent "stealing" the stream from the audio tag
             const cloneStream = stream.clone(); 
             const source = audioCtx.createMediaStreamSource(cloneStream);
             analyser = audioCtx.createAnalyser();
             analyser.fftSize = 256;
-            
-            // Connect ONLY to analyser. DO NOT connect to destination.
-            // This prevents echo and phase issues.
             source.connect(analyser);
-            
-            // Start Visuals
             drawMeters();
         } catch (e) {
             log("Metering setup failed: " + e.message, "err");
