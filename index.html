@@ -96,7 +96,16 @@
 
         /* ROSTER STYLES */
         #roster-panel { width: 100%; display: none; flex-direction: column; gap: 8px; border-top: 1px solid #333; padding-top: 15px; }
-        .roster-header { font-size: 0.7rem; color: #666; font-weight: 700; text-transform: uppercase; margin-bottom: 4px; }
+        
+        /* UPDATED HEADER STYLE */
+        .roster-header { 
+            font-size: 0.9rem; 
+            color: #8e8e93; 
+            font-weight: 700; 
+            text-align: center; /* Centered */
+            margin-bottom: 8px; 
+            text-transform: none; /* No Caps */
+        }
         
         .roster-item { 
             display: flex; align-items: center; justify-content: space-between;
@@ -106,7 +115,6 @@
         .role-icon { width: 18px; height: 18px; color: #555; }
         .role-icon.sender { color: var(--accent); }
         .roster-name { font-size: 0.9rem; font-weight: 500; color: #eee; }
-        .roster-tag { font-size: 0.7rem; color: #888; margin-left: 6px; }
         
         .roster-status { width: 16px; height: 16px; color: #444; }
         .roster-status.active { color: var(--success); }
@@ -155,7 +163,7 @@
     </div>
 
     <div id="roster-panel">
-        <div class="roster-header">Participants</div>
+        <div id="roster-title" class="roster-header">Participants</div>
         <div id="roster-list">
             </div>
     </div>
@@ -191,11 +199,12 @@
     const iconMute = document.getElementById('icon-mute');
     const inputPanel = document.getElementById('setup-panel');
     const rosterPanel = document.getElementById('roster-panel');
+    const rosterTitle = document.getElementById('roster-title');
     const rosterList = document.getElementById('roster-list');
     const meterL = document.getElementById('m-l');
     const meterR = document.getElementById('m-r');
     
-    // SF SYMBOL PATHS
+    // SF SYMBOL ICONS
     const ICON_MIC = `<svg viewBox="0 0 24 24"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/><path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/></svg>`;
     const ICON_HEADPHONES = `<svg viewBox="0 0 24 24"><path d="M12 3c-4.97 0-9 4.03-9 9v7c0 1.1.9 2 2 2h4v-8H5v-1c0-3.87 3.13-7 7-7s7 3.13 7 7v1h-4v8h4c1.1 0 2-.9 2-2v-7c0-4.97-4.03-9-9-9z"/></svg>`;
     const ICON_WAVE = `<svg viewBox="0 0 24 24"><path d="M14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77zm-4 0h-2.5l-5 5H0v6h2.5l5 5H10V3.23z"/></svg>`;
@@ -215,6 +224,9 @@
             const room = document.getElementById('room').value;
             const user = document.getElementById('user').value;
             if (!room || !user) return log("Missing Room/Name", "err");
+            
+            // UPDATE TITLE
+            rosterTitle.textContent = room;
             
             setUIState('connecting');
             
@@ -261,13 +273,12 @@
             iconMute.style.display = "none";
         }
         
-        // Notify Server of state change (so others see it in roster)
         if (ws && ws.readyState === WebSocket.OPEN) {
             ws.send(JSON.stringify({
                 type: 'status-update',
                 id: myId,
-                isMicEnabled: false, // We are a receiver, no mic
-                isMusicEnabled: !isMuted // Music enabled = not muted
+                isMicEnabled: false,
+                isMusicEnabled: !isMuted
             }));
         }
     });
@@ -296,7 +307,7 @@
             inputPanel.style.display = "none";
             miniMeters.style.display = "flex"; 
             btnMute.style.display = "flex";
-            rosterPanel.style.display = "flex"; // Show Roster
+            rosterPanel.style.display = "flex"; 
         }
         else if (state === 'disconnected') {
             isConnected = false;
@@ -313,11 +324,12 @@
             
             miniMeters.style.display = "none"; 
             btnMute.style.display = "none"; 
-            rosterPanel.style.display = "none"; // Hide Roster
+            rosterPanel.style.display = "none";
             
             meterL.style.height = "0%";
             meterR.style.height = "0%";
             rosterList.innerHTML = "";
+            rosterTitle.textContent = "Participants"; // Reset title
         }
     }
 
@@ -340,7 +352,6 @@
         ws.onmessage = async (e) => {
             const msg = JSON.parse(e.data);
             
-            // Handle Roster Updates
             if (msg.type === 'roster-update') {
                 renderRoster(msg.roster);
                 return;
@@ -364,25 +375,17 @@
             const div = document.createElement('div');
             div.className = 'roster-item';
             
-            // Identify if this is "Me"
             const isMe = user.id === myId;
             const displayName = isMe ? `${user.name} (You)` : user.name;
             
-            // Icon Logic: Broadcasting (Sender) vs Listener (Receiver)
-            // 'isBroadcasting' flag comes from the Sender app / server.
             const isSender = user.isBroadcasting;
             const leftIcon = isSender ? ICON_MIC : ICON_HEADPHONES;
             const iconClass = isSender ? 'role-icon sender' : 'role-icon';
             
-            // Status Logic: Sending Audio (Wave) vs Muted (Slash)
-            // For sender: isMicEnabled / isMusicEnabled
-            // For receiver: we infer from local mute state logic sent to server
             let isActive = true;
             if (isSender) {
-                // If it's a broadcaster, check if music or mic is enabled
                 isActive = user.isMusicEnabled;
             } else {
-                // For listeners, usually assume active unless they report mute
                 isActive = user.isMusicEnabled !== false;
             }
             
@@ -432,7 +435,6 @@
         audioEl.play().catch(e => log("Autoplay blocked: " + e.message, "warn"));
 
         if (audioCtx.state === 'suspended') audioCtx.resume();
-        
         try {
             const cloneStream = stream.clone(); 
             const source = audioCtx.createMediaStreamSource(cloneStream);
