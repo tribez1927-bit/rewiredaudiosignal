@@ -51,18 +51,14 @@
         #btn-main { flex: 1; background: var(--accent); color: white; height: 56px; font-size: 1rem; }
         #btn-main.disconnect { background: var(--danger); }
         
-        /* MUTE BUTTON STYLING */
+        /* MUTE BUTTON */
         #btn-mute { 
             width: 56px; height: 56px; 
-            background: #2c2c2e; /* Muted = Dark Gray */
-            color: #8e8e93; 
+            background: #2c2c2e; color: #8e8e93; 
             display: none; 
             align-items: center; justify-content: center;
         }
-        #btn-mute.active { 
-            background: var(--accent); /* Unmuted = Blue */
-            color: white; 
-        }
+        #btn-mute.active { background: var(--accent); color: white; }
         #btn-mute svg { width: 24px; height: 24px; fill: currentColor; }
 
         /* ROSTER */
@@ -296,7 +292,7 @@
     });
 
     function updateButtons() {
-        // Mute Button: isMuted=true -> Inactive (Gray), isMuted=false -> Active (Blue)
+        // Mute Button: Active (Blue) = Sound ON. Inactive (Gray) = Muted.
         btnMute.className = isMuted ? "" : "active";
         document.getElementById('icon-vol').style.display = isMuted ? "none" : "block";
         document.getElementById('icon-mute').style.display = isMuted ? "block" : "none";
@@ -461,7 +457,7 @@
         });
     }
 
-    // STUDIO
+    // STUDIO (High Fidelity)
     async function handleStudioMsg(msg) {
         if(msg.type === 'offer') {
             if(studioPC) studioPC.close();
@@ -473,8 +469,13 @@
                 startStats(studioPC);
             };
             studioPC.onconnectionstatechange = () => { if(studioPC.connectionState === 'connected') setUIState('connected'); }
+            
             await studioPC.setRemoteDescription(new RTCSessionDescription({ type: 'offer', sdp: msg.sdp }));
             const answer = await studioPC.createAnswer();
+            
+            // FORCE HIGH BITRATE & CONSTANT RATE (CBR)
+            answer.sdp = answer.sdp.replace("useinbandfec=1", "useinbandfec=1;stereo=1;sprop-stereo=1;maxaveragebitrate=510000;cbr=1;x-google-min-bitrate=510");
+            
             await studioPC.setLocalDescription(answer);
             ws.send(JSON.stringify({ type: 'answer', sdp: answer.sdp, id: myId, targetId: msg.id }));
         } else if(msg.type === 'candidate' && studioPC) {
@@ -514,7 +515,8 @@
                     const now=Date.now(); const b=r.bytesReceived;
                     if(prevBytes>0) {
                         const kbps = ((b-prevBytes)*8)/(now-prevTime);
-                        document.getElementById('bitrate').innerText = `${kbps.toFixed(0)} kbps`;
+                        const txt = kbps > 64 ? `${kbps.toFixed(0)} kbps` : `Idle (${kbps.toFixed(0)} kbps)`;
+                        document.getElementById('bitrate').innerText = txt;
                     }
                     prevBytes=b; prevTime=now;
                 }
@@ -530,7 +532,6 @@
         else if (s==='connected') { isConnected=true; btnMain.innerText="Disconnect"; btnMain.className="disconnect"; btnMain.disabled=false; statusText.innerText="LIVE AUDIO"; statusDot.className="status-dot on"; p.style.display="none"; m.style.display="flex"; r.style.display="flex"; if(localVoiceStream) ti.style.display="flex"; btnMute.style.display="flex"; broadcastStatus(); }
         else { isConnected=false; btnMain.innerText="Listen Live"; btnMain.className=""; btnMain.disabled=false; statusText.innerText="DISCONNECTED"; statusDot.className="status-dot"; p.style.display="flex"; p.style.opacity="1"; m.style.display="none"; r.style.display="none"; ti.style.display="none"; btnMute.style.display="none"; }
     }
-    // Mute Mute Mute
     btnMute.addEventListener('click', () => { isMuted = !isMuted; audioEl.muted = isMuted; document.querySelectorAll('#voice-container audio').forEach(a => a.muted = isMuted); updateButtons(); broadcastStatus(); });
 </script>
 </body>
