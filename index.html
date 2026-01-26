@@ -6,11 +6,11 @@
     <title>Rewired Studio Monitor</title>
     <style>
         :root { 
-            --bg: #000000; --card: #1c1c1e; --accent: #0a84ff; /* Blue */
+            --bg: #000000; --card: #1c1c1e; --accent: #0a84ff; 
             --text: #f2f2f7; --danger: #ff453a; 
-            --success: #32d74b;       /* Standard Green */
-            --success-light: #66ff7f; /* Bright Light Green (Active Audio) */
-            --warn: #ff9f0a;          /* Dark Orange (Muted) */
+            --success: #32d74b;       /* Green */
+            --success-light: #66ff7f; /* Bright Green (Signal) */
+            --warn: #ff9f0a;          /* Orange (Muted) */
             --ice: #bd53ed; --sig: #8e8e93; --vol: #00ffcc;
         }
         body { 
@@ -55,11 +55,7 @@
         #btn-main.disconnect { background: var(--danger); }
         
         /* MUTE BUTTON */
-        #btn-mute { 
-            width: 56px; height: 56px; 
-            background: #2c2c2e; color: #8e8e93; 
-            display: none; align-items: center; justify-content: center;
-        }
+        #btn-mute { width: 56px; height: 56px; background: #2c2c2e; color: #8e8e93; display: none; align-items: center; justify-content: center; }
         #btn-mute.active { background: var(--accent); color: white; }
         #btn-mute svg { width: 24px; height: 24px; fill: currentColor; }
 
@@ -69,37 +65,34 @@
         .roster-item { display: flex; align-items: center; justify-content: space-between; background: #252527; padding: 10px 12px; border-radius: 10px; }
         .roster-left { display: flex; align-items: center; gap: 10px; }
         
-        /* --- 1. LEFT COLUMN DOTS --- */
+        /* --- 1. LEFT DOTS --- */
         .peer-dot { width: 6px; height: 6px; border-radius: 50%; background: #000; border: 1px solid #444; transition: background 0.3s; }
-        /* Receiver = Blue */
-        .peer-dot.receiver { background: var(--accent); border-color: var(--accent); } 
-        /* Sender = Light Green */
-        .peer-dot.sender { background: var(--success); border-color: var(--success); } 
+        .peer-dot.receiver { background: var(--accent); border-color: var(--accent); } /* Blue */
+        .peer-dot.sender { background: var(--success); border-color: var(--success); } /* Green */
         .peer-dot.failed { background: var(--danger); border-color: var(--danger); }
         .peer-dot.connecting { background: var(--warn); border-color: var(--warn); }
 
-        /* --- 2. MIDDLE ICONS (HEADPHONES/MIC) --- */
-        .role-icon { width: 18px; height: 18px; color: #555; transition: color 0.3s ease; }
+        /* --- 2. MIDDLE ICONS (ROLE) --- */
+        .role-icon { width: 18px; height: 18px; color: #555; transition: color 0.3s ease; display: flex; align-items: center; }
+        .role-icon svg { width: 100%; height: 100%; fill: currentColor; } /* Fixes color issue */
         
-        /* Sender Mic = Blue */
-        .role-icon.sender { color: var(--accent); } 
-        
-        /* Receiver Headphones: Dynamic Colors */
-        .role-icon.recv-unmuted { color: var(--success); } /* Light Green */
-        .role-icon.recv-muted { color: var(--warn); }      /* Dark Orange */
-        
+        /* Colors */
+        .role-icon.sender { color: var(--accent); } /* Blue */
+        .role-icon.recv-unmuted { color: var(--success); } /* Green */
+        .role-icon.recv-muted { color: var(--warn); } /* Orange */
+        .role-icon.connecting { color: var(--warn); animation: pulse 1s infinite; }
+        .role-icon.failed { color: var(--danger); }
+
         .roster-name { font-size: 0.9rem; font-weight: 500; color: #eee; }
         
         /* --- 3. RIGHT STATUS ICON (MIC) --- */
-        .roster-status { width: 16px; height: 16px; transition: color 0.15s ease-out; } /* Fast transition for audio */
+        .roster-status { width: 16px; height: 16px; transition: color 0.15s ease-out; display: flex; align-items: center; }
+        .roster-status svg { width: 100%; height: 100%; fill: currentColor; } /* Fixes color issue */
         
-        /* Base States */
-        .roster-status.muted { color: var(--warn); }           /* Dark Orange */
-        .roster-status.unmuted { color: var(--success); }      /* Green */
-        
-        /* Active Audio Signal (> 25) */
+        .roster-status.muted { color: var(--warn); }
+        .roster-status.unmuted { color: var(--success); }
         .roster-status.signal { 
-            color: var(--success-light); /* Bright Light Green */
+            color: var(--success-light); 
             filter: drop-shadow(0 0 5px var(--success)); 
             transform: scale(1.1);
         }
@@ -189,8 +182,6 @@
     
     const ICON_MIC = `<svg viewBox="0 0 24 24"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/><path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/></svg>`;
     const ICON_HEADPHONES = `<svg viewBox="0 0 24 24"><path d="M12 3c-4.97 0-9 4.03-9 9v7c0 1.1.9 2 2 2h4v-8H5v-1c0-3.87 3.13-7 7-7s7 3.13 7 7v1h-4v8h4c1.1 0 2-.9 2-2v-7c0-4.97-4.03-9-9-9z"/></svg>`;
-    const ICON_WAVE = `<svg viewBox="0 0 24 24"><path d="M14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77zm-4 0h-2.5l-5 5H0v6h2.5l5 5H10V3.23z"/></svg>`;
-    const ICON_SLASH = `<svg viewBox="0 0 24 24"><path d="M19 12c0 1.72-1.02 3.22-2.5 4v2.15c2.34-.99 4-3.32 4-6.15 0-2.83-1.66-5.16-4-6.15V8c1.48.78 2.5 2.28 2.5 4zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06c1.38-.31 2.63-.95 3.69-1.81L19.73 21 21 19.73 4.27 3zM12 4L9.91 6.09 12 8.18V4z"/></svg>`;
 
     function log(msg, type='info') {
         const line = document.createElement('div');
@@ -205,6 +196,7 @@
         try {
             const src = audioCtx.createMediaStreamSource(stream);
             
+            // Route Remote to Speakers (Block Local)
             if (!label.includes("Local")) {
                 const gain = audioCtx.createGain();
                 gain.gain.value = 1.0;
@@ -223,12 +215,11 @@
                 let sum = 0; for(let i=0; i<data.length; i++) sum += data[i];
                 const avg = sum / data.length;
                 
-                // --- ROSTER VISUAL LOGIC ---
-                // Threshold: > 25 (out of 255)
+                // VISUAL SIGNAL ON ROSTER
                 if (rosterId) {
                     const statusIcon = document.getElementById(`status-icon-${rosterId}`);
                     if (statusIcon) {
-                        // Apply 'signal' class if above threshold
+                        // > 25 (approx -20dB) = Signal
                         if (avg > 25) statusIcon.classList.add('signal');
                         else statusIcon.classList.remove('signal');
                     }
@@ -482,18 +473,15 @@
                 roleIcon = `<div class="role-icon sender">${ICON_MIC}</div>`; // Blue Mic
             } else {
                 // Receiver Headphones: Green (Unmuted) / Orange (Muted)
-                const muteClass = (u.isMicEnabled || u.isMusicEnabled) ? 'recv-unmuted' : 'recv-muted';
+                // Use 'isMicEnabled' if available from your signaling, falling back to Music flag
+                const muteClass = (u.isMicEnabled !== false && u.isMusicEnabled !== false) ? 'recv-unmuted' : 'recv-muted';
                 roleIcon = `<div class="role-icon ${muteClass}">${ICON_HEADPHONES}</div>`;
             }
 
             // 3. RIGHT STATUS ICON (MIC)
-            // Green (Unmuted) / Orange (Muted). Flashes Bright Green on Signal > 25.
             const isActive = isSender ? u.isMusicEnabled : (u.isMicEnabled !== false);
             const rightClass = isActive ? 'roster-status unmuted' : 'roster-status muted';
             
-            // Note: We use Mic Icon for status now per request
-            const rightIconSVG = ICON_MIC; 
-
             const el = document.createElement('div');
             el.className = 'roster-item';
             el.innerHTML = `
@@ -502,7 +490,7 @@
                     ${roleIcon}
                     <span class="roster-name">${isMe ? u.name + ' (You)' : u.name}</span>
                 </div>
-                <div id="status-icon-${u.id}" class="${rightClass}">${rightIconSVG}</div>
+                <div id="status-icon-${u.id}" class="${rightClass}">${ICON_MIC}</div>
             `;
             list.appendChild(el);
         });
