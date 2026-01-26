@@ -14,29 +14,53 @@
             --success: #32d74b; 
             --warn: #ffd60a; 
         }
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background: var(--bg); color: var(--text); display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; padding: 10px; box-sizing: border-box; }
         
-        .container { background: var(--card); padding: 24px; border-radius: 20px; width: 100%; max-width: 380px; display: flex; flex-direction: column; gap: 24px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
+        /* LAYOUT FIX: Prevent overflow */
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; 
+            background: var(--bg); 
+            color: var(--text); 
+            display: flex; 
+            flex-direction: column; 
+            align-items: center; 
+            justify-content: center; 
+            min-height: 100vh; 
+            margin: 0; 
+            padding: 16px; /* Reduced padding for mobile */
+            box-sizing: border-box; 
+            overflow-x: hidden;
+        }
+        
+        .container { 
+            background: var(--card); 
+            padding: 24px 20px; /* Tighter padding */
+            border-radius: 20px; 
+            width: 100%; 
+            max-width: 380px; 
+            display: flex; 
+            flex-direction: column; 
+            gap: 24px; 
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5); 
+            box-sizing: border-box;
+        }
         
         /* HEADER */
         .header { text-align: center; border-bottom: 1px solid #333; padding-bottom: 15px; }
         h1 { margin: 0; font-size: 0.9rem; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: #8e8e93; margin-bottom: 8px; }
         
         .status-container { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+        .status-row { display: flex; align-items: center; justify-content: center; height: 16px; width: 100%; }
         
-        /* STATUS ROW: Dot + Text + Meters */
-        .status-row { display: flex; align-items: center; justify-content: center; height: 16px; }
-        
-        .status-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #444; margin-right: 8px; transition: 0.3s; }
+        .status-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #444; margin-right: 8px; transition: 0.3s; flex-shrink: 0; }
         .status-dot.on { background: var(--success); box-shadow: 0 0 8px var(--success); }
-        .status-text { font-size: 0.75rem; font-weight: 600; color: #fff; letter-spacing: 0.5px; line-height: 1; }
+        .status-text { font-size: 0.75rem; font-weight: 600; color: #fff; letter-spacing: 0.5px; line-height: 1; white-space: nowrap; }
         
-        /* MINI METERS (In Header) */
+        /* MINI METERS */
         .mini-meters {
-            display: none; /* Hidden by default */
+            display: none; 
             gap: 2px;
             margin-left: 10px;
-            height: 10px; /* Match font height */
+            height: 10px;
             align-items: flex-end;
         }
         .mini-meter-col {
@@ -59,18 +83,18 @@
         .bitrate { font-family: "SF Mono", monospace; font-size: 0.7rem; color: #666; font-weight: 500; margin-top: 4px; }
 
         /* INPUTS */
-        .input-group { display: flex; gap: 10px; }
+        .input-group { display: flex; gap: 10px; width: 100%; }
         input { 
             flex: 1; background: #2c2c2e; border: none; color: white; 
             padding: 14px; border-radius: 12px; font-size: 15px; outline: none; 
             text-align: center; transition: background 0.2s;
+            min-width: 0; /* Flexbox overflow fix */
         }
         input:focus { background: #3a3a3c; }
 
-        /* CONTROLS AREA */
-        .controls-row { display: flex; gap: 12px; align-items: center; }
+        /* CONTROLS */
+        .controls-row { display: flex; gap: 12px; align-items: center; width: 100%; }
 
-        /* MAIN ACTION BUTTON */
         #btn-main { 
             flex: 1; padding: 16px; border-radius: 14px; border: none;
             font-weight: 600; font-size: 1rem; cursor: pointer; color: white;
@@ -82,16 +106,16 @@
         #btn-main:disabled { background: #3a3a3c; color: #666; cursor: wait; }
         #btn-main.disconnect { background: var(--danger); }
 
-        /* MUTE BUTTON */
         #btn-mute { 
             width: 56px; height: 56px; border-radius: 14px; border: none;
             background: #2c2c2e; color: #8e8e93; cursor: pointer;
-            display: none; /* Hidden until connected */
+            display: none;
             align-items: center; justify-content: center;
             transition: all 0.2s; -webkit-tap-highlight-color: transparent;
+            flex-shrink: 0;
         }
         #btn-mute:active { transform: scale(0.95); }
-        #btn-mute.active { background: #fff; color: #000; } /* Unmuted State */
+        #btn-mute.active { background: #fff; color: #000; }
         
         svg { width: 24px; height: 24px; fill: currentColor; }
 
@@ -99,7 +123,7 @@
         #console { 
             height: 120px; background: #000; border-radius: 8px; border: 1px solid #333;
             padding: 10px; font-family: "SF Mono", monospace; font-size: 10px; 
-            color: #636366; overflow-y: auto; 
+            color: #636366; overflow-y: auto; width: 100%; box-sizing: border-box;
         }
         .log-err { color: var(--danger); }
         .log-warn { color: var(--warn); }
@@ -141,7 +165,7 @@
     <div id="console"></div>
 </div>
 
-<audio id="audio-tag" playsinline style="display:none;"></audio>
+<audio id="audio-tag" autoplay playsinline style="display:none;"></audio>
 
 <script>
     // --- CONFIG ---
@@ -149,7 +173,7 @@
     const myId = 'rx-' + Math.floor(Math.random() * 10000);
     
     // --- STATE ---
-    let ws, pc, audioCtx, analyser, gainNode;
+    let ws, pc, audioCtx, analyser;
     let isConnected = false;
     let isMuted = false;
     let animationId;
@@ -161,13 +185,13 @@
     const statusText = document.getElementById('status-text');
     const bitrateEl = document.getElementById('bitrate');
     const miniMeters = document.getElementById('mini-meters');
+    const audioEl = document.getElementById('audio-tag'); // The Source of Truth for Sound
     
     const btnMain = document.getElementById('btn-main');
     const btnMute = document.getElementById('btn-mute');
     const iconVol = document.getElementById('icon-vol');
     const iconMute = document.getElementById('icon-mute');
     const inputPanel = document.getElementById('setup-panel');
-    
     const meterL = document.getElementById('m-l');
     const meterR = document.getElementById('m-r');
     
@@ -189,8 +213,16 @@
             setUIState('connecting');
             
             try {
+                // 1. Prepare Audio Context (Metering)
                 audioCtx = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: 'interactive', sampleRate: 48000 });
                 await audioCtx.resume();
+                
+                // 2. Prepare Audio Element (Hearing)
+                // We must "touch" the element in a user event to unlock it on iOS
+                audioEl.srcObject = null;
+                audioEl.muted = false;
+                audioEl.volume = 1.0;
+                
                 connectSignaling(room, user);
             } catch (e) {
                 log(`Audio Error: ${e.message}`, "err");
@@ -203,6 +235,8 @@
             if (pc) pc.close();
             if (audioCtx) audioCtx.close();
             
+            audioEl.srcObject = null; // Stop playback
+            
             clearInterval(statsInterval);
             cancelAnimationFrame(animationId);
             setUIState('disconnected');
@@ -211,20 +245,16 @@
 
     // --- BUTTON HANDLER: MUTE ---
     btnMute.addEventListener('click', () => {
-        if (!gainNode) return;
         isMuted = !isMuted;
         
-        const now = audioCtx.currentTime;
-        gainNode.gain.cancelScheduledValues(now);
-        gainNode.gain.setValueAtTime(gainNode.gain.value, now);
+        // Control HTML5 Audio Element Directly
+        audioEl.muted = isMuted;
         
         if (isMuted) {
-            gainNode.gain.linearRampToValueAtTime(0, now + 0.05);
             btnMute.className = ""; 
             iconVol.style.display = "none";
             iconMute.style.display = "block";
         } else {
-            gainNode.gain.linearRampToValueAtTime(1, now + 0.05);
             btnMute.className = "active"; 
             iconVol.style.display = "block";
             iconMute.style.display = "none";
@@ -252,8 +282,8 @@
             statusDot.className = "status-dot on";
             
             inputPanel.style.display = "none";
-            miniMeters.style.display = "flex"; // Show Meters
-            btnMute.style.display = "flex";    // Show Mute
+            miniMeters.style.display = "flex"; 
+            btnMute.style.display = "flex";   
         }
         else if (state === 'disconnected') {
             isConnected = false;
@@ -268,8 +298,8 @@
             inputPanel.style.display = "flex";
             inputPanel.style.opacity = "1";
             
-            miniMeters.style.display = "none"; // Hide Meters
-            btnMute.style.display = "none";    // Hide Mute
+            miniMeters.style.display = "none"; 
+            btnMute.style.display = "none";    
             
             meterL.style.height = "0%";
             meterR.style.height = "0%";
@@ -313,7 +343,7 @@
 
         pc.ontrack = e => {
             log("Audio Track Received");
-            setupAudio(e.streams[0]);
+            setupDualPipeline(e.streams[0]);
             startStats(pc);
         };
 
@@ -324,29 +354,38 @@
         ws.send(JSON.stringify({ type: 'answer', sdp: answer.sdp, id: myId, targetId: senderId }));
     }
 
-    // --- AUDIO PIPELINE ---
-    function setupAudio(stream) {
+    // --- DUAL PIPELINE STRATEGY ---
+    function setupDualPipeline(stream) {
+        // PATH A: HEARING (Reliable Playback)
+        // We assign the stream directly to the audio element.
+        audioEl.srcObject = stream;
+        
+        // Ensure mute state matches UI (resets on new connection)
+        audioEl.muted = isMuted;
+        
+        // Force play
+        audioEl.play().catch(e => log("Autoplay blocked: " + e.message, "warn"));
+
+        // PATH B: SEEING (Metering)
+        // We clone the stream so the Analyser doesn't interfere with the Player
         if (audioCtx.state === 'suspended') audioCtx.resume();
         
-        const source = audioCtx.createMediaStreamSource(stream);
-        analyser = audioCtx.createAnalyser();
-        analyser.fftSize = 256;
-        analyser.smoothingTimeConstant = 0.5;
-        
-        gainNode = audioCtx.createGain();
-        gainNode.gain.value = isMuted ? 0 : 1.0;
-        
-        source.connect(analyser);
-        analyser.connect(gainNode);
-        gainNode.connect(audioCtx.destination);
-        
-        drawMeters();
-        
-        // iOS Keep-Alive
-        const tag = document.getElementById('audio-tag');
-        tag.srcObject = stream;
-        tag.muted = true;
-        tag.play().catch(e => {});
+        try {
+            // Use clone to prevent "stealing" the stream from the audio tag
+            const cloneStream = stream.clone(); 
+            const source = audioCtx.createMediaStreamSource(cloneStream);
+            analyser = audioCtx.createAnalyser();
+            analyser.fftSize = 256;
+            
+            // Connect ONLY to analyser. DO NOT connect to destination.
+            // This prevents echo and phase issues.
+            source.connect(analyser);
+            
+            // Start Visuals
+            drawMeters();
+        } catch (e) {
+            log("Metering setup failed: " + e.message, "err");
+        }
     }
 
     function drawMeters() {
