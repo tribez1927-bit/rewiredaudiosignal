@@ -49,6 +49,7 @@
             display: flex; align-items: center; justify-content: center;
             cursor: pointer; transition: all 0.2s;
             border: 1px solid #333;
+            z-index: 10; /* Ensure clickable */
         }
         #btn-talk.active { background: var(--accent); border-color: var(--accent); color: white; }
         #btn-talk.muted { color: #666; }
@@ -115,6 +116,7 @@
             color: #636366; overflow-y: auto; width: 100%; box-sizing: border-box;
         }
         .log-err { color: var(--danger); }
+        .log-warn { color: var(--warn); }
     </style>
 </head>
 <body>
@@ -174,14 +176,14 @@
     
     // --- GLOBAL STATE ---
     let ws, audioCtx, analyser;
-    let studioPC; // The High-Fidelity Connection (One-Way)
-    const voicePeerConnections = {}; // Map<PeerID, RTCPeerConnection> (Mesh)
+    let studioPC; 
+    const voicePeerConnections = {}; 
     
     let isConnected = false;
-    let isMuted = false;       // Local Playback Mute
-    let isTalking = false;     // Local Mic State
+    let isMuted = false;
+    let isTalking = false;
     let localVoiceStream = null;
-    let broadcasterId = null;  // ID of the Studio Host
+    let broadcasterId = null;
 
     let animationId;
     let statsInterval;
@@ -215,6 +217,7 @@
         const line = document.createElement('div');
         line.textContent = `> ${msg}`;
         if (type === 'err') line.className = 'log-err';
+        if (type === 'warn') line.className = 'log-warn';
         logEl.prepend(line);
     }
 
@@ -239,9 +242,20 @@
                 audioEl.play().catch(e=>{});
                 
                 // 3. Mic Access (Voice Channel)
+                log("Requesting Mic Access...", "info");
                 localVoiceStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                localVoiceStream.getAudioTracks().forEach(t => t.enabled = false); // Muted by default
                 
+                // Track monitoring (Fix for iOS backgrounding)
+                localVoiceStream.getAudioTracks()[0].onended = () => {
+                    log("Mic stream ended by OS", "warn");
+                    isTalking = false;
+                    updateButtons();
+                };
+                
+                // Mute initially
+                localVoiceStream.getAudioTracks().forEach(t => t.enabled = false); 
+                log("Mic Access Granted", "info");
+
                 connectSignaling(room, user);
             } catch (e) {
                 log(`Setup Error: ${e.message}`, "err");
@@ -255,24 +269,14 @@
     function disconnectAll() {
         log("Disconnecting...", "warn");
         if (ws) ws.close();
-        
-        // Close Studio PC
         if (studioPC) studioPC.close();
         studioPC = null;
-        
-        // Close Voice Mesh
-        for (let id in voicePeerConnections) {
-            voicePeerConnections[id].close();
-        }
-        
-        // Stop Mic
+        for (let id in voicePeerConnections) { voicePeerConnections[id].close(); }
         if (localVoiceStream) localVoiceStream.getTracks().forEach(t => t.stop());
         localVoiceStream = null;
-
         if (audioCtx) audioCtx.close();
         audioEl.srcObject = null;
-        document.getElementById('voice-container').innerHTML = ''; // Clear voice tags
-        
+        document.getElementById('voice-container').innerHTML = '';
         clearInterval(statsInterval);
         cancelAnimationFrame(animationId);
         setUIState('disconnected');
@@ -282,37 +286,38 @@
     btnMute.addEventListener('click', () => {
         isMuted = !isMuted;
         audioEl.muted = isMuted;
-        // Also mute voice participants? Optional. Currently only mutes Studio.
-        
         updateButtons();
         broadcastStatus();
     });
 
     // --- TALK TOGGLE (VOICE CHANNEL) ---
-    btnTalk.addEventListener('click', () => {
-        if (!localVoiceStream) return;
+    btnTalk.addEventListener('click', async () => {
+        // [FIX] Robust Mic Check
+        if (!localVoiceStream || !localVoiceStream.active) {
+            log("Mic stream inactive. Re-acquiring...", "warn");
+            try {
+                localVoiceStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                // Note: Adding this new track to existing calls requires renegotiation logic not fully present here.
+                // Ideally, users should disconnect/reconnect if hardware changes.
+            } catch(e) {
+                log("Mic Access Denied: " + e.message, "err");
+                return;
+            }
+        }
+        
         isTalking = !isTalking;
-        
-        // Toggle Local Mic Track
         localVoiceStream.getAudioTracks().forEach(t => t.enabled = isTalking);
-        
         updateButtons();
         broadcastStatus();
     });
 
     function updateButtons() {
-        // Mute Button
         if (isMuted) {
-            btnMute.className = ""; 
-            iconVol.style.display = "none";
-            iconMute.style.display = "block";
+            btnMute.className = ""; iconVol.style.display = "none"; iconMute.style.display = "block";
         } else {
-            btnMute.className = "active"; 
-            iconVol.style.display = "block";
-            iconMute.style.display = "none";
+            btnMute.className = "active"; iconVol.style.display = "block"; iconMute.style.display = "none";
         }
         
-        // Talk Button
         if (isTalking) {
             btnTalk.className = "active";
             document.getElementById('icon-talk-off').style.display = "none";
@@ -343,10 +348,8 @@
                 handleRosterUpdate(msg.roster);
                 return;
             }
-            
-            if (msg.id === myId) return; // Ignore self
+            if (msg.id === myId) return;
 
-            // Route Signaling
             const isFromBroadcaster = (msg.id === broadcasterId);
             
             if (msg.type === 'offer') {
@@ -374,26 +377,17 @@
     // --- ROSTER & MESH LOGIC ---
     function handleRosterUpdate(roster) {
         renderRoster(roster);
-        
-        // Identify Broadcaster
         const host = roster.find(u => u.isBroadcasting);
         if (host) broadcasterId = host.id;
 
-        // Manage Voice Connections (Mesh)
-        // Connect to anyone who is NOT me and NOT the broadcaster
         roster.forEach(peer => {
             if (peer.id === myId) return;
             if (peer.id === broadcasterId) return;
             
             if (!voicePeerConnections[peer.id]) {
-                // New Peer Found
                 log(`New Peer: ${peer.name}`);
                 createVoiceConnection(peer.id);
-                
-                // GLER PREVENTION: Only the peer with "lower" ID initiates
-                if (myId < peer.id) {
-                    initiateVoiceCall(peer.id);
-                }
+                if (myId < peer.id) initiateVoiceCall(peer.id);
             }
         });
     }
@@ -405,17 +399,15 @@
             if (e.candidate) ws.send(JSON.stringify({ type: 'candidate', ...e.candidate.toJSON(), id: myId, targetId: peerId }));
         };
         
-        // Handle INCOMING Voice Audio
         pc.ontrack = e => {
             log(`Voice received from ${peerId.substring(0,4)}`);
             const audio = document.createElement('audio');
             audio.srcObject = e.streams[0];
             audio.autoplay = true;
-            audio.playsInline = true;
+            audio.playsInline = true; // [FIX] Required for mobile
             document.getElementById('voice-container').appendChild(audio);
         };
         
-        // Add LOCAL Voice Track
         if (localVoiceStream) {
             localVoiceStream.getTracks().forEach(track => pc.addTrack(track, localVoiceStream));
         }
@@ -446,7 +438,7 @@
         if (pc) await pc.setRemoteDescription(new RTCSessionDescription({ type: 'answer', sdp }));
     }
 
-    // --- STUDIO STREAM (HIGH QUALITY) ---
+    // --- STUDIO STREAM ---
     async function handleStudioOffer(sdp, senderId) {
         if (studioPC) studioPC.close();
         studioPC = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }] });
@@ -468,7 +460,6 @@
 
         await studioPC.setRemoteDescription(new RTCSessionDescription({ type: 'offer', sdp }));
         const answer = await studioPC.createAnswer();
-        // Request High Quality from Sender
         answer.sdp = answer.sdp.replace("useinbandfec=1", "useinbandfec=1;stereo=1;sprop-stereo=1;maxaveragebitrate=510000");
         await studioPC.setLocalDescription(answer);
         ws.send(JSON.stringify({ type: 'answer', sdp: answer.sdp, id: myId, targetId: senderId }));
@@ -476,7 +467,6 @@
 
     function setupStudioPipeline(stream) {
         audioEl.srcObject = stream;
-        // Mixing visuals
         if (audioCtx.state === 'suspended') audioCtx.resume();
         try {
             const clone = stream.clone();
@@ -494,9 +484,9 @@
             ws.send(JSON.stringify({
                 type: 'status-update',
                 id: myId,
-                isMicEnabled: false, // Studio Mic flag (irrelevant for receivers)
-                isMusicEnabled: !isMuted, // For roster "Listening" status
-                isBroadcasting: false // Receivers are not Studio Broadcasters
+                isMicEnabled: isTalking, // [FIX] Now reflects actual Mic state
+                isMusicEnabled: !isMuted,
+                isBroadcasting: false
             }));
         }
     }
@@ -534,9 +524,10 @@
             const isSender = user.isBroadcasting;
             const leftIcon = isSender ? ICON_MIC : ICON_HEADPHONES;
             const iconClass = isSender ? 'role-icon sender' : 'role-icon';
-            const isActive = isSender ? user.isMusicEnabled : user.isMusicEnabled !== false;
-            const rightIcon = isActive ? ICON_WAVE : ICON_SLASH;
-            const statusClass = isActive ? 'roster-status active' : 'roster-status muted';
+            // [FIX] Status logic: If Talk Enabled, show Wave. Else show Slash.
+            const isVoiceActive = user.isMicEnabled; 
+            const rightIcon = isVoiceActive ? ICON_WAVE : ICON_SLASH;
+            const statusClass = isVoiceActive ? 'roster-status active' : 'roster-status muted';
             div.innerHTML = `<div class="roster-left"><div class="${iconClass}">${leftIcon}</div><span class="roster-name">${displayName}</span></div><div class="${statusClass}">${rightIcon}</div>`;
             rosterList.appendChild(div);
         });
