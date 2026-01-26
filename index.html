@@ -63,7 +63,6 @@
         .role-icon.sender { color: var(--accent); }
         .roster-name { font-size: 0.9rem; font-weight: 500; color: #eee; }
         
-        /* Connection Status Dot */
         .peer-dot { width: 6px; height: 6px; border-radius: 50%; background: #000; border: 1px solid #444; }
         .peer-dot.connected { background: var(--success); border-color: var(--success); }
         .peer-dot.failed { background: var(--danger); border-color: var(--danger); }
@@ -158,12 +157,6 @@
     const btnMute = document.getElementById('btn-mute');
     const btnTalk = document.getElementById('btn-talk');
     
-    // SF SYMBOL ICONS
-    const ICON_MIC = `<svg viewBox="0 0 24 24"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/><path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/></svg>`;
-    const ICON_HEADPHONES = `<svg viewBox="0 0 24 24"><path d="M12 3c-4.97 0-9 4.03-9 9v7c0 1.1.9 2 2 2h4v-8H5v-1c0-3.87 3.13-7 7-7s7 3.13 7 7v1h-4v8h4c1.1 0 2-.9 2-2v-7c0-4.97-4.03-9-9-9z"/></svg>`;
-    const ICON_WAVE = `<svg viewBox="0 0 24 24"><path d="M14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77zm-4 0h-2.5l-5 5H0v6h2.5l5 5H10V3.23z"/></svg>`;
-    const ICON_SLASH = `<svg viewBox="0 0 24 24"><path d="M19 12c0 1.72-1.02 3.22-2.5 4v2.15c2.34-.99 4-3.32 4-6.15 0-2.83-1.66-5.16-4-6.15V8c1.48.78 2.5 2.28 2.5 4zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06c1.38-.31 2.63-.95 3.69-1.81L19.73 21 21 19.73 4.27 3zM12 4L9.91 6.09 12 8.18V4z"/></svg>`;
-
     function log(msg, type='info') {
         const line = document.createElement('div');
         line.innerText = `[${new Date().toLocaleTimeString().split(' ')[0]}] ${msg}`;
@@ -191,11 +184,10 @@
 
                 log("🎙 Requesting Mic...", "mic");
                 try {
-                    // FORCE OPUS & NOISE CANCELLATION FOR VOICE
                     localVoiceStream = await navigator.mediaDevices.getUserMedia({ 
                         audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } 
                     });
-                    localVoiceStream.getAudioTracks().forEach(t => t.enabled = false); // Mute initially
+                    localVoiceStream.getAudioTracks().forEach(t => t.enabled = false);
                     log("🎙 Mic Ready (Muted)", "mic");
                 } catch(e) {
                     log("🚫 Mic Failed: " + e.message, "err");
@@ -221,16 +213,14 @@
         }
         if(localVoiceStream) localVoiceStream.getTracks().forEach(t => t.stop());
         localVoiceStream = null;
-        
         document.getElementById('voice-container').innerHTML = '';
         setUIState('disconnected');
     }
 
-    // --- TALK TOGGLE (AUTO-REPAIR) ---
+    // --- REPAIR / TALK ---
     btnTalk.addEventListener('click', () => {
-        // If in repair mode, force restart
         if (needsRepair) {
-            log("[FIX] 🔧 Repairing broken connections...", "log-fix");
+            log("[FIX] 🔧 Repairing IPv4 connections...", "log-fix");
             for(let id in voicePeerConnections) {
                 const session = voicePeerConnections[id];
                 if (session.pc.connectionState === 'failed' || session.pc.connectionState === 'disconnected') {
@@ -255,7 +245,6 @@
         broadcastStatus();
     });
 
-    // --- BUTTON UI ---
     function updateButtons() {
         btnMute.className = isMuted ? "" : "active";
         document.getElementById('icon-vol').style.display = isMuted ? "none" : "block";
@@ -277,15 +266,6 @@
             talkIconOn.style.display = isTalking ? "block" : "none";
         }
     }
-    
-    // MUTE BTN
-    btnMute.addEventListener('click', () => {
-        isMuted = !isMuted;
-        audioEl.muted = isMuted;
-        document.querySelectorAll('#voice-container audio').forEach(a => a.muted = isMuted);
-        updateButtons();
-        broadcastStatus();
-    });
 
     // --- SIGNALING ---
     function connectSignaling(room, user) {
@@ -306,47 +286,41 @@
         ws.onclose = () => setUIState('disconnected');
     }
 
-    // --- VOICE MESH LOGIC (PEER TO PEER) ---
+    // --- VOICE MESH ---
     function getVoicePC(peerId) {
         if(!voicePeerConnections[peerId]) {
             log(`[MESH] Creating PC for ${peerId.substring(0,4)}`, "info");
             
-            // CONFIG: Google STUN
+            // CONFIG
             const pc = new RTCPeerConnection({ 
                 iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
-                iceTransportPolicy: 'all', // ALLOW P2P
-                bundlePolicy: 'max-bundle'
+                iceTransportPolicy: 'all', 
+                bundlePolicy: 'max-bundle',
+                iceCandidatePoolSize: 0 
             });
             
-            // 1. ADD TRANSCEIVER (Force Audio Channel)
             pc.addTransceiver('audio', { direction: 'sendrecv' });
+            if(localVoiceStream) localVoiceStream.getTracks().forEach(t => pc.addTrack(t, localVoiceStream));
 
-            // 2. ADD LOCAL TRACKS
-            if(localVoiceStream) {
-                localVoiceStream.getTracks().forEach(t => pc.addTrack(t, localVoiceStream));
-            }
-
-            // 3. HANDLE REMOTE TRACKS
             pc.ontrack = e => {
-                log(`🗣 Voice Track from ${peerId.substring(0,4)}`, "info");
+                log(`🗣 Audio from ${peerId.substring(0,4)}`, "info");
                 const aud = document.createElement('audio');
                 aud.srcObject = e.streams[0];
                 aud.autoplay = true;
                 aud.playsInline = true;
-                aud.id = `voice-${peerId}`;
                 document.getElementById('voice-container').appendChild(aud);
             };
 
-            // 4. ICE HANDLING (With Detailed IP Logging)
+            // IPv4 ENFORCEMENT
             pc.onicecandidate = e => {
                 if(e.candidate) {
-                    // Check for mDNS obfuscation
                     const ip = e.candidate.candidate.split(' ')[4];
-                    const type = e.candidate.type;
-                    
-                    if (ip.endsWith('.local')) log(`[ICE] ⚠️ mDNS Masked IP detected: ${ip}`, "warn");
-                    else log(`[ICE] 📤 Local: ${ip} (${type})`, "ice");
-                    
+                    // FILTER OUT IPv6
+                    if(ip.includes(':')) {
+                        // console.log("Skipping IPv6 candidate"); 
+                        return;
+                    }
+                    log(`[ICE] 📤 Local IPv4: ${ip}`, "ice");
                     ws.send(JSON.stringify({ type: 'candidate', ...e.candidate.toJSON(), id: myId, targetId: peerId }));
                 }
             };
@@ -359,18 +333,17 @@
                     updateButtons();
                 }
             };
-            
-            // 5. CONNECTION WATCHDOG
-            // If stuck in 'checking' for 5s, trigger repair
-            let checkTimer = setTimeout(() => {
+
+            // STAGGERED REPAIR WATCHDOG
+            setTimeout(() => {
                 if(pc.iceConnectionState === 'checking') {
-                    log(`[ICE] ⚠️ Connection stuck checking for ${peerId.substring(0,4)}`, "warn");
+                    log(`[ICE] Stuck. Try Restart.`, "warn");
                     needsRepair = true;
                     updateButtons();
                 }
             }, 8000);
 
-            voicePeerConnections[peerId] = { pc: pc, candidates: [], timer: checkTimer };
+            voicePeerConnections[peerId] = { pc: pc, candidates: [] };
         }
         return voicePeerConnections[peerId];
     }
@@ -383,9 +356,7 @@
             if(msg.type === 'offer') {
                 log(`📥 Offer from ${msg.id.substring(0,4)}`, "sig");
                 await pc.setRemoteDescription(new RTCSessionDescription({ type: 'offer', sdp: msg.sdp }));
-                
                 while(session.candidates.length) pc.addIceCandidate(session.candidates.shift());
-
                 const answer = await pc.createAnswer();
                 await pc.setLocalDescription(answer);
                 ws.send(JSON.stringify({ type: 'answer', sdp: answer.sdp, id: myId, targetId: msg.id }));
@@ -396,36 +367,37 @@
                 while(session.candidates.length) pc.addIceCandidate(session.candidates.shift());
             }
             else if(msg.type === 'candidate') {
-                // Log IP of remote peer
+                // Ignore remote IPv6
                 const ip = msg.candidate.split(' ')[4];
-                if (ip && !ip.endsWith('.local')) log(`[ICE] 📥 Remote: ${ip}`, "ice");
+                if(ip.includes(':')) return;
                 
+                log(`[ICE] 📥 Remote IPv4: ${ip}`, "ice");
                 if(pc.remoteDescription) pc.addIceCandidate(msg);
                 else session.candidates.push(msg);
             }
-        } catch(e) {
-            log(`WebRTC Error (${msg.type}): ${e.message}`, "err");
-        }
+        } catch(e) { log(e.message, "err"); }
     }
 
-    // --- ROSTER LOGIC ---
+    // --- ROSTER ---
     let currentRoster = [];
     function handleRoster(roster) {
         currentRoster = roster;
         renderRoster();
-        
         const host = roster.find(u => u.isBroadcasting);
         if(host) broadcasterId = host.id;
 
         roster.forEach(peer => {
             if(peer.id === myId || peer.id === broadcasterId) return;
+            // DELAY P2P CALLS TO PREVENT CONGESTION
             if(myId < peer.id && !voicePeerConnections[peer.id]) {
-                log(`📞 Calling ${peer.name}...`, "info");
-                const session = getVoicePC(peer.id);
-                session.pc.createOffer().then(offer => {
-                    session.pc.setLocalDescription(offer);
-                    ws.send(JSON.stringify({ type: 'offer', sdp: offer.sdp, id: myId, targetId: peer.id }));
-                });
+                setTimeout(() => {
+                    log(`📞 Calling ${peer.name}...`, "info");
+                    const session = getVoicePC(peer.id);
+                    session.pc.createOffer().then(offer => {
+                        session.pc.setLocalDescription(offer);
+                        ws.send(JSON.stringify({ type: 'offer', sdp: offer.sdp, id: myId, targetId: peer.id }));
+                    });
+                }, 1000 + Math.random()*1000); // Stagger by 1-2s
             }
         });
     }
@@ -445,6 +417,7 @@
                 connClass += ' connected';
             }
             
+            // Re-used icons (same as before)
             const icon = isSender ? 
                 `<svg style="width:16px;color:#0a84ff" viewBox="0 0 24 24"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/><path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/></svg>` : 
                 `<svg style="width:16px;color:#666" viewBox="0 0 24 24"><path d="M12 3c-4.97 0-9 4.03-9 9v7c0 1.1.9 2 2 2h4v-8H5v-1c0-3.87 3.13-7 7-7s7 3.13 7 7v1h-4v8h4c1.1 0 2-.9 2-2v-7c0-4.97-4.03-9-9-9z"/></svg>`;
@@ -455,23 +428,12 @@
 
             const el = document.createElement('div');
             el.className = 'roster-item';
-            el.innerHTML = `
-                <div class="roster-left">
-                    <div class="${connClass}"></div>
-                    ${icon}
-                    <span class="roster-name">${isMe ? u.name + ' (You)' : u.name}</span>
-                </div>
-                ${statusIcon}
-            `;
-            document.getElementById('roster-list').appendChild(el);
+            el.innerHTML = `<div class="roster-left"><div class="${connClass}"></div>${icon}<span class="roster-name">${isMe ? u.name + ' (You)' : u.name}</span></div>${statusIcon}`;
+            list.appendChild(el);
         });
     }
 
-    function updateRosterStatus(id, state) {
-        renderRoster(); // Simple re-render to update dots
-    }
-    
-    // --- STUDIO LOGIC ---
+    // STUDIO (Same)
     async function handleStudioMsg(msg) {
         if(msg.type === 'offer') {
             if(studioPC) studioPC.close();
@@ -482,20 +444,17 @@
                 startVisuals(e.streams[0]);
                 startStats(studioPC);
             };
-            studioPC.onconnectionstatechange = () => {
-                if(studioPC.connectionState === 'connected') setUIState('connected');
-            }
+            studioPC.onconnectionstatechange = () => { if(studioPC.connectionState === 'connected') setUIState('connected'); }
             await studioPC.setRemoteDescription(new RTCSessionDescription({ type: 'offer', sdp: msg.sdp }));
             const answer = await studioPC.createAnswer();
             await studioPC.setLocalDescription(answer);
             ws.send(JSON.stringify({ type: 'answer', sdp: answer.sdp, id: myId, targetId: msg.id }));
-        }
-        else if(msg.type === 'candidate' && studioPC) {
+        } else if(msg.type === 'candidate' && studioPC) {
             studioPC.addIceCandidate(msg);
         }
     }
 
-    // --- VISUALS ---
+    // VISUALS
     function startVisuals(stream) {
         if (audioCtx.state === 'suspended') audioCtx.resume();
         try {
@@ -534,31 +493,17 @@
             });
         }, 1000);
     }
-    
-    function setUIState(s) {
-        const p = document.getElementById('setup-panel');
-        const m = document.getElementById('mini-meters');
-        const r = document.getElementById('roster-panel');
-        if(s==='connecting') {
-            btnMain.innerText="Connecting..."; btnMain.disabled=true; statusText.innerText="CONNECTING";
-            statusDot.className="status-dot"; p.style.opacity="0.5";
-        } else if (s==='connected') {
-            isConnected=true; btnMain.innerText="Disconnect"; btnMain.className="disconnect"; btnMain.disabled=false;
-            statusText.innerText="LIVE AUDIO"; statusDot.className="status-dot on";
-            p.style.display="none"; m.style.display="flex"; r.style.display="flex";
-            if(localVoiceStream) btnTalk.style.display="flex";
-            btnMute.style.display="flex";
-            broadcastStatus();
-        } else {
-            isConnected=false; btnMain.innerText="Listen Live"; btnMain.className=""; btnMain.disabled=false;
-            statusText.innerText="DISCONNECTED"; statusDot.className="status-dot";
-            p.style.display="flex"; p.style.opacity="1"; m.style.display="none"; r.style.display="none";
-            btnTalk.style.display="none"; btnMute.style.display="none";
-        }
-    }
     function broadcastStatus() {
         if(ws && ws.readyState===1) ws.send(JSON.stringify({ type:'status-update', id:myId, isMicEnabled:isTalking, isMusicEnabled:!isMuted }));
     }
+    function setUIState(s) {
+        const p=document.getElementById('setup-panel'), m=document.getElementById('mini-meters'), r=document.getElementById('roster-panel');
+        if(s==='connecting') { btnMain.innerText="Connecting..."; btnMain.disabled=true; p.style.opacity="0.5"; }
+        else if (s==='connected') { isConnected=true; btnMain.innerText="Disconnect"; btnMain.className="disconnect"; btnMain.disabled=false; statusText.innerText="LIVE AUDIO"; statusDot.className="status-dot on"; p.style.display="none"; m.style.display="flex"; r.style.display="flex"; if(localVoiceStream) btnTalk.style.display="flex"; btnMute.style.display="flex"; broadcastStatus(); }
+        else { isConnected=false; btnMain.innerText="Listen Live"; btnMain.className=""; btnMain.disabled=false; statusText.innerText="DISCONNECTED"; statusDot.className="status-dot"; p.style.display="flex"; p.style.opacity="1"; m.style.display="none"; r.style.display="none"; btnTalk.style.display="none"; btnMute.style.display="none"; }
+    }
+    // Mute Mute Mute
+    btnMute.addEventListener('click', () => { isMuted = !isMuted; audioEl.muted = isMuted; document.querySelectorAll('#voice-container audio').forEach(a => a.muted = isMuted); updateButtons(); broadcastStatus(); });
 </script>
 </body>
 </html>
