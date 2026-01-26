@@ -46,10 +46,11 @@
             position: absolute; right: 0; top: 0;
             width: 32px; height: 32px;
             background: #2c2c2e; border-radius: 50%;
-            display: flex; align-items: center; justify-content: center;
+            display: none; /* Hidden until connected AND mic approved */
+            align-items: center; justify-content: center;
             cursor: pointer; transition: all 0.2s;
             border: 1px solid #333;
-            z-index: 10; /* Ensure clickable */
+            z-index: 10;
         }
         #btn-talk.active { background: var(--accent); border-color: var(--accent); color: white; }
         #btn-talk.muted { color: #666; }
@@ -125,7 +126,7 @@
     <div class="header">
         <h1>Studio Monitor</h1>
         
-        <div id="btn-talk" class="muted" style="display:none;">
+        <div id="btn-talk" class="muted">
             <svg id="icon-talk-off" viewBox="0 0 24 24"><path d="M19 11h-1.7c0 .74-.16 1.43-.43 2.05l1.23 1.23c.56-.98.9-2.09.9-3.28zm-4.02.17c0-.06.02-.11.02-.17V5c0-1.66-1.34-3-3-3S9 3.34 9 5v.18l5.98 5.99zM4.27 3L3 4.27l6.01 6.01V11c0 1.66 1.33 3 2.99 3 .22 0 .44-.03.65-.08l2.97 2.97c-.85.35-1.76.57-2.71.5-2.38-.18-4.49-1.92-4.9-4.28L8 13h4c0 2.21 1.79 4 4 4 .58 0 1.13-.13 1.62-.35l.48.48 1.15 1.15 2.1 2.1L21 19.73 4.27 3z"/></svg>
             <svg id="icon-talk-on" viewBox="0 0 24 24" style="display:none;"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/><path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/></svg>
         </div>
@@ -241,20 +242,17 @@
                 audioEl.muted = false;
                 audioEl.play().catch(e=>{});
                 
-                // 3. Mic Access (Voice Channel)
-                log("Requesting Mic Access...", "info");
-                localVoiceStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                
-                // Track monitoring (Fix for iOS backgrounding)
-                localVoiceStream.getAudioTracks()[0].onended = () => {
-                    log("Mic stream ended by OS", "warn");
-                    isTalking = false;
-                    updateButtons();
-                };
-                
-                // Mute initially
-                localVoiceStream.getAudioTracks().forEach(t => t.enabled = false); 
-                log("Mic Access Granted", "info");
+                // 3. Mic Access (REQUEST NOW)
+                // We ask for mic access BEFORE connecting so the stream is ready for WebRTC.
+                try {
+                    log("Requesting Mic...", "info");
+                    localVoiceStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                    localVoiceStream.getAudioTracks().forEach(t => t.enabled = false); // Mute initially
+                    log("Mic Ready", "info");
+                } catch (e) {
+                    log("Mic Denied: Talk disabled", "warn");
+                    localVoiceStream = null;
+                }
 
                 connectSignaling(room, user);
             } catch (e) {
@@ -286,27 +284,20 @@
     btnMute.addEventListener('click', () => {
         isMuted = !isMuted;
         audioEl.muted = isMuted;
+        // Also mute voice participants? 
+        document.querySelectorAll('#voice-container audio').forEach(el => el.muted = isMuted);
+        
         updateButtons();
         broadcastStatus();
     });
 
     // --- TALK TOGGLE (VOICE CHANNEL) ---
-    btnTalk.addEventListener('click', async () => {
-        // [FIX] Robust Mic Check
-        if (!localVoiceStream || !localVoiceStream.active) {
-            log("Mic stream inactive. Re-acquiring...", "warn");
-            try {
-                localVoiceStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                // Note: Adding this new track to existing calls requires renegotiation logic not fully present here.
-                // Ideally, users should disconnect/reconnect if hardware changes.
-            } catch(e) {
-                log("Mic Access Denied: " + e.message, "err");
-                return;
-            }
-        }
+    btnTalk.addEventListener('click', () => {
+        if (!localVoiceStream) return; // Should be hidden if null, but safe check
         
         isTalking = !isTalking;
         localVoiceStream.getAudioTracks().forEach(t => t.enabled = isTalking);
+        
         updateButtons();
         broadcastStatus();
     });
@@ -385,8 +376,9 @@
             if (peer.id === broadcasterId) return;
             
             if (!voicePeerConnections[peer.id]) {
-                log(`New Peer: ${peer.name}`);
+                log(`New Voice Peer: ${peer.name}`);
                 createVoiceConnection(peer.id);
+                // Mesh Logic: Lower ID initiates call
                 if (myId < peer.id) initiateVoiceCall(peer.id);
             }
         });
@@ -404,10 +396,12 @@
             const audio = document.createElement('audio');
             audio.srcObject = e.streams[0];
             audio.autoplay = true;
-            audio.playsInline = true; // [FIX] Required for mobile
+            audio.playsInline = true;
+            audio.muted = isMuted; // Sync mute state
             document.getElementById('voice-container').appendChild(audio);
         };
         
+        // CRITICAL: Add local stream tracks immediately (even if muted)
         if (localVoiceStream) {
             localVoiceStream.getTracks().forEach(track => pc.addTrack(track, localVoiceStream));
         }
@@ -484,7 +478,7 @@
             ws.send(JSON.stringify({
                 type: 'status-update',
                 id: myId,
-                isMicEnabled: isTalking, // [FIX] Now reflects actual Mic state
+                isMicEnabled: isTalking,
                 isMusicEnabled: !isMuted,
                 isBroadcasting: false
             }));
@@ -502,7 +496,11 @@
             btnMain.textContent = "Disconnect"; btnMain.className = "disconnect"; btnMain.disabled = false;
             statusText.textContent = "LIVE AUDIO"; statusDot.className = "status-dot on";
             inputPanel.style.display = "none"; miniMeters.style.display = "flex";
-            btnMute.style.display = "flex"; btnTalk.style.display = "flex"; rosterPanel.style.display = "flex";
+            btnMute.style.display = "flex"; rosterPanel.style.display = "flex";
+            
+            // Only show talk button if mic is available
+            if (localVoiceStream) btnTalk.style.display = "flex";
+            else btnTalk.style.display = "none";
         } else {
             isConnected = false;
             btnMain.textContent = "Listen Live"; btnMain.className = ""; btnMain.disabled = false;
@@ -524,10 +522,10 @@
             const isSender = user.isBroadcasting;
             const leftIcon = isSender ? ICON_MIC : ICON_HEADPHONES;
             const iconClass = isSender ? 'role-icon sender' : 'role-icon';
-            // [FIX] Status logic: If Talk Enabled, show Wave. Else show Slash.
-            const isVoiceActive = user.isMicEnabled; 
-            const rightIcon = isVoiceActive ? ICON_WAVE : ICON_SLASH;
-            const statusClass = isVoiceActive ? 'roster-status active' : 'roster-status muted';
+            // Status: Sender=Music/Mic. Receiver=MicEnabled (Talking) or Muted.
+            const isActive = isSender ? user.isMusicEnabled : user.isMicEnabled; 
+            const rightIcon = isActive ? ICON_WAVE : ICON_SLASH;
+            const statusClass = isActive ? 'roster-status active' : 'roster-status muted';
             div.innerHTML = `<div class="roster-left"><div class="${iconClass}">${leftIcon}</div><span class="roster-name">${displayName}</span></div><div class="${statusClass}">${rightIcon}</div>`;
             rosterList.appendChild(div);
         });
