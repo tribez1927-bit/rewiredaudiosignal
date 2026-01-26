@@ -5,270 +5,301 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Rewired Studio Monitor</title>
     <style>
-        :root { --bg: #0a0a0a; --card: #161616; --accent: #007aff; --text: #ffffff; }
-        body { font-family: -apple-system, system-ui; background: var(--bg); color: var(--text); display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; margin: 0; padding: 20px; box-sizing: border-box; }
-        .container { background: var(--card); padding: 30px; border-radius: 24px; text-align: center; width: 100%; max-width: 360px; box-shadow: 0 20px 40px rgba(0,0,0,0.4); border: 1px solid #333; }
-        h1 { font-size: 1.1rem; font-weight: 600; margin-bottom: 4px; color: #fff; text-transform: uppercase; letter-spacing: 1px; }
+        :root { --bg: #000000; --card: #1c1c1e; --accent: #0a84ff; --text: #f2f2f7; --danger: #ff453a; --success: #30d158; --warn: #ffd60a; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background: var(--bg); color: var(--text); display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; padding: 10px; box-sizing: border-box; }
         
-        .subtitle { font-size: 0.8rem; color: #888; margin-bottom: 20px; }
-        .subtitle b { color: var(--accent); }
-
-        .input-group { margin-bottom: 15px; text-align: left; }
-        label { display: block; font-size: 0.75rem; color: #666; margin-bottom: 5px; margin-left: 4px; text-transform: uppercase; }
-        input { width: 100%; padding: 12px; background: #222; border: 1px solid #333; border-radius: 10px; color: white; font-size: 1rem; box-sizing: border-box; }
+        .container { background: var(--card); padding: 24px; border-radius: 20px; width: 100%; max-width: 400px; display: flex; flex-direction: column; gap: 16px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
         
-        .meter-stack { display: flex; gap: 4px; justify-content: center; height: 100px; margin: 20px 0; }
-        .meter { width: 12px; background: #222; border-radius: 4px; position: relative; overflow: hidden; }
-        .meter-fill { width: 100%; position: absolute; bottom: 0; background: linear-gradient(to top, #34c759 0%, #34c759 70%, #ffcc00 85%, #ff3b30 100%); transition: height 0.08s ease-out; }
-
-        .status { font-size: 0.85rem; margin-bottom: 20px; color: #666; font-weight: 500; }
-        .status.online { color: #34c759; }
-        .status.connecting { color: #ff9500; }
-        .status.error { color: #ff3b30; }
-
-        .roster-container { margin-top: 20px; text-align: left; border-top: 1px solid #333; padding-top: 15px; }
-        .roster-title { font-size: 0.7rem; color: #555; font-weight: bold; margin-bottom: 10px; text-transform: uppercase; }
-        .roster-list { list-style: none; padding: 0; margin: 0; font-size: 0.85rem; }
-        .roster-item { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; color: #ccc; }
-        .roster-icon { width: 8px; height: 8px; border-radius: 50%; background: #444; }
-        .roster-icon.sender { background: #007aff; box-shadow: 0 0 5px #007aff; }
-        .roster-item b { color: #fff; font-weight: 500; }
-
-        button { background: var(--accent); color: white; border: none; padding: 16px; border-radius: 14px; font-size: 1rem; font-weight: 600; cursor: pointer; width: 100%; -webkit-tap-highlight-color: transparent; }
-        button:disabled { background: #333; color: #666; }
-        button:active { transform: scale(0.98); }
+        h1 { margin: 0; font-size: 1.1rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; text-align: center; color: #8e8e93; }
         
-        #debug-console { width: 100%; max-width: 360px; height: 120px; background: #000; color: #0f0; font-family: monospace; font-size: 10px; padding: 10px; margin-top: 20px; border-radius: 8px; overflow-y: auto; border: 1px solid #333; text-align: left; }
+        /* STATUS BAR */
+        .status-bar { display: flex; justify-content: center; align-items: center; gap: 8px; font-size: 0.8rem; font-weight: 600; padding-bottom: 8px; border-bottom: 1px solid #333; letter-spacing: 0.5px; }
+        .dot { width: 8px; height: 8px; border-radius: 50%; background: #3a3a3c; }
+        .dot.active { background: var(--success); box-shadow: 0 0 8px var(--success); }
+        .dot.error { background: var(--danger); }
+        
+        /* METERS */
+        .meters { display: flex; height: 140px; gap: 8px; background: #000; border-radius: 12px; padding: 12px; border: 1px solid #333; }
+        .meter-col { flex: 1; background: #1c1c1e; border-radius: 6px; position: relative; overflow: hidden; }
+        .meter-fill { position: absolute; bottom: 0; width: 100%; background: linear-gradient(to top, var(--success), var(--warn), var(--danger)); transition: height 0.08s ease-out; height: 0%; }
+        
+        /* CONTROLS AREA */
+        .controls-row { display: flex; gap: 12px; margin-top: 5px; }
+        
+        /* BUTTONS */
+        .btn { 
+            flex: 1; border: none; padding: 16px; border-radius: 14px; 
+            font-weight: 600; font-size: 1rem; cursor: pointer; 
+            display: flex; align-items: center; justify-content: center; gap: 8px;
+            transition: all 0.2s; -webkit-tap-highlight-color: transparent;
+        }
+        .btn:active { transform: scale(0.96); }
+        .btn:disabled { background: #3a3a3c; color: #8e8e93; }
+        
+        /* Primary Connect Button */
+        #btn-main { background: var(--accent); color: white; }
+        #btn-main.disconnect { background: var(--danger); }
+        
+        /* Mute Button (Only visible when connected) */
+        #btn-mute { background: #2c2c2e; color: #8e8e93; display: none; max-width: 80px; }
+        #btn-mute.active { background: #fff; color: #000; } /* Unmuted State */
+        
+        /* ICONS */
+        svg { width: 20px; height: 20px; fill: currentColor; }
+
+        /* INPUTS */
+        .inputs { display: flex; gap: 10px; }
+        input { flex: 1; background: #2c2c2e; border: none; color: white; padding: 14px; border-radius: 10px; font-size: 16px; outline: none; }
+        input:focus { background: #3a3a3c; }
+
+        /* LOGS */
+        #console { height: 100px; font-family: "SF Mono", monospace; font-size: 10px; color: #636366; overflow-y: auto; text-align: left; padding-top: 10px; border-top: 1px solid #333; }
+        .log-err { color: var(--danger); }
+        .log-warn { color: var(--warn); }
     </style>
 </head>
 <body>
 
 <div class="container">
     <h1>Studio Monitor</h1>
-    <div id="subtitle" class="subtitle">Not Connected</div>
     
-    <div id="inputs">
-        <div class="input-group">
-            <label>Room Name</label>
-            <input type="text" id="room-input" value="studio1">
-        </div>
-        <div class="input-group">
-            <label>Your Name</label>
-            <input type="text" id="name-input" placeholder="Enter name...">
-        </div>
+    <div class="status-bar">
+        <div id="status-dot" class="dot"></div>
+        <span id="conn-status">DISCONNECTED</span>
     </div>
 
-    <div id="meter-display" class="meter-stack" style="display:none;">
-        <div class="meter"><div id="fill-l" class="meter-fill" style="height: 0%"></div></div>
-        <div class="meter"><div id="fill-r" class="meter-fill" style="height: 0%"></div></div>
+    <div class="meters">
+        <div class="meter-col"><div id="m-l" class="meter-fill"></div></div>
+        <div class="meter-col"><div id="m-r" class="meter-fill"></div></div>
     </div>
 
-    <div id="status" class="status">Idle</div>
-    <button id="join-btn">Listen Live</button>
-
-    <div class="roster-container" id="roster-view" style="display:none;">
-        <div class="roster-title">Room Roster</div>
-        <ul id="roster-list" class="roster-list"></ul>
+    <div class="inputs" id="input-area">
+        <input id="room" value="studio1" placeholder="Room">
+        <input id="user" placeholder="Your Name">
     </div>
+
+    <div class="controls-row">
+        <button id="btn-main" class="btn">Connect</button>
+        
+        <button id="btn-mute" class="btn active">
+            <svg id="icon-vol" viewBox="0 0 24 24"><path d="M14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77zm-4 0h-2.5l-5 5H0v6h2.5l5 5H10V3.23z"/></svg>
+            <svg id="icon-mute" viewBox="0 0 24 24" style="display:none"><path d="M16.5 12c0-1.77-1.02-3.29-2.5-4.03v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51C20.63 14.91 21 13.5 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06c1.38-.31 2.63-.95 3.69-1.81L19.73 21 21 19.73 4.27 3zM12 4L9.91 6.09 12 8.18V4z"/></svg>
+        </button>
+    </div>
+    
+    <div id="console"></div>
 </div>
 
-<div id="debug-console"></div>
-<audio id="remote-audio" autoplay playsinline></audio>
+<audio id="audio-tag" playsinline style="display:none;"></audio>
 
 <script>
-    // 1. Global Error Handler
-    window.onerror = function(message, source, lineno, colno, error) {
-        log(`CRITICAL ERROR: ${message}`, 'error');
-        console.error(error);
-    };
-
-    const consoleEl = document.getElementById('debug-console');
-    const statusLabel = document.getElementById('status');
-    const subtitleLabel = document.getElementById('subtitle');
-    const rosterList = document.getElementById('roster-list');
+    // --- CONFIG ---
+    const WS_URL = window.location.origin.replace(/^http/, 'ws');
+    const myId = 'rx-' + Math.floor(Math.random() * 10000);
     
-    // 2. Safe ID Generator
-    function generateId() {
-        if (typeof crypto !== 'undefined' && crypto.randomUUID) {
-            return crypto.randomUUID();
-        }
-        return 'user-' + Math.random().toString(36).substr(2, 9);
-    }
-
-    // 3. Render-Compatible URL Detector
-    function getServerUrl() {
-        return window.location.origin.replace(/^http/, 'ws');
-    }
-
-    const myId = generateId();
-    const serverUrl = getServerUrl();
+    // --- STATE ---
+    let ws, pc, audioCtx, analyser, gainNode;
+    let isConnected = false;
+    let isMuted = false; // Default: Playing
     
-    let socket, pc, audioCtx;
-
-    function log(msg, type = 'info') {
-        const entry = document.createElement('div');
-        entry.innerText = `> ${msg}`;
-        if (type === 'error') entry.style.color = '#ff3b30';
-        if (type === 'warn') entry.style.color = '#ffcc00';
-        consoleEl.prepend(entry);
-        console.log(msg);
+    // --- UI ELEMENTS ---
+    const logEl = document.getElementById('console');
+    const statusText = document.getElementById('conn-status');
+    const statusDot = document.getElementById('status-dot');
+    
+    const btnMain = document.getElementById('btn-main');
+    const btnMute = document.getElementById('btn-mute');
+    const iconVol = document.getElementById('icon-vol');
+    const iconMute = document.getElementById('icon-mute');
+    const inputArea = document.getElementById('input-area');
+    
+    const meterL = document.getElementById('m-l');
+    const meterR = document.getElementById('m-r');
+    
+    function log(msg, type='info') {
+        const line = document.createElement('div');
+        line.textContent = `> ${msg}`;
+        if (type === 'err') line.className = 'log-err';
+        if (type === 'warn') line.className = 'log-warn';
+        logEl.prepend(line);
     }
 
-    log(`System Ready. ID: ${myId.substring(0,4)}...`);
-    log(`Target Server: ${serverUrl}`);
-
-    document.getElementById('join-btn').addEventListener('click', async () => {
-        log("Button Clicked. Starting...");
-        const roomName = document.getElementById('room-input').value.trim();
-        const userName = document.getElementById('name-input').value.trim();
-
-        if (!roomName || !userName) {
-            log("Error: Name and Room required", "error");
-            return;
-        }
-
-        document.getElementById('join-btn').disabled = true;
-        statusLabel.innerText = "Connecting...";
-        statusLabel.className = "status connecting";
-        subtitleLabel.innerHTML = `Connecting to <b>${roomName}</b> as <b>${userName}</b>`;
-        
-        try {
-            // Initialize Audio Context on User Gesture (Required for iOS)
-            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-            if (audioCtx.state === 'suspended') await audioCtx.resume();
-            log("Audio Context Started ✅");
-            initSignaling(roomName, userName);
-        } catch (e) {
-            log(`Init Error: ${e.message}`, 'error');
-            statusLabel.innerText = "Connection Failed";
-            statusLabel.className = "status error";
-            document.getElementById('join-btn').disabled = false;
+    // --- BUTTON LOGIC ---
+    btnMain.addEventListener('click', async () => {
+        if (!isConnected) {
+            // CONNECT ACTION
+            const room = document.getElementById('room').value;
+            const user = document.getElementById('user').value;
+            if (!room || !user) return log("Enter room & name", "err");
+            
+            btnMain.disabled = true;
+            btnMain.textContent = "Connecting...";
+            
+            try {
+                // Initialize Audio Context (Must be user gesture)
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: 'interactive', sampleRate: 48000 });
+                await audioCtx.resume();
+                connectSignaling(room, user);
+            } catch (e) {
+                log("Audio Init Failed: " + e, "err");
+                resetUI();
+            }
+        } else {
+            // DISCONNECT ACTION
+            log("Disconnecting...", "warn");
+            if (ws) ws.close();
+            if (pc) pc.close();
+            if (audioCtx) audioCtx.close();
+            resetUI();
         }
     });
 
-    function initSignaling(room, name) {
-        log(`Dialing WebSocket: ${serverUrl}`);
-        socket = new WebSocket(serverUrl);
+    btnMute.addEventListener('click', () => {
+        if (!gainNode) return;
+        
+        isMuted = !isMuted;
+        const now = audioCtx.currentTime;
+        
+        // Instant Volume Cut (Safer than Pause)
+        gainNode.gain.cancelScheduledValues(now);
+        gainNode.gain.setValueAtTime(gainNode.gain.value, now);
+        
+        if (isMuted) {
+            gainNode.gain.linearRampToValueAtTime(0, now + 0.05);
+            btnMute.className = "btn"; // Dark background
+            iconVol.style.display = "none";
+            iconMute.style.display = "block";
+            log("Muted 🔇");
+        } else {
+            gainNode.gain.linearRampToValueAtTime(1, now + 0.05);
+            btnMute.className = "btn active"; // White background
+            iconVol.style.display = "block";
+            iconMute.style.display = "none";
+            log("Playing 🔊");
+        }
+    });
 
-        socket.onopen = () => {
-            log("WebSocket Connected ✅");
-            socket.send(JSON.stringify({
-                type: "join",
-                room: room,
-                name: name,
-                id: myId,
-                role: "receiver"
-            }));
-        };
-
-        socket.onmessage = async (event) => {
-            const msg = JSON.parse(event.data);
-            if (msg.id === myId && msg.type !== "roster-update") return;
-
-            switch (msg.type) {
-                case "roster-update":
-                    updateRosterUI(msg.roster);
-                    break;
-                case "offer":
-                    log("Received Offer from Sender");
-                    handleOffer(msg.sdp, msg.id);
-                    break;
-                case "candidate":
-                    if (pc) await pc.addIceCandidate(new RTCIceCandidate(msg));
-                    break;
-            }
+    // --- SIGNALING ---
+    function connectSignaling(room, user) {
+        ws = new WebSocket(WS_URL);
+        
+        ws.onopen = () => {
+            log("Server Connected");
+            ws.send(JSON.stringify({ type: 'join', room, name: user, id: myId, role: 'receiver' }));
         };
         
-        socket.onerror = (e) => {
-            log("WebSocket Error. Check Server URL.", "error");
-            statusLabel.innerText = "Server Error";
-            statusLabel.className = "status error";
+        ws.onmessage = async (e) => {
+            const msg = JSON.parse(e.data);
+            if (msg.id === myId) return;
+            if (msg.type === 'offer') handleOffer(msg.sdp, msg.id);
+            else if (msg.type === 'candidate' && pc) pc.addIceCandidate(msg);
         };
-
-        socket.onclose = () => {
-            log("WebSocket Disconnected", "warn");
-            statusLabel.innerText = "Disconnected";
-            statusLabel.className = "status";
-            document.getElementById('join-btn').disabled = false;
+        
+        ws.onclose = () => {
+            log("Disconnected");
+            resetUI();
         };
     }
 
-    function updateRosterUI(roster) {
-        rosterList.innerHTML = '';
-        document.getElementById('roster-view').style.display = 'block';
-        
-        roster.forEach(peer => {
-            const item = document.createElement('li');
-            item.className = 'roster-item';
-            const isSender = peer.role === 'duplex' || peer.name.includes('(You)');
-            const icon = document.createElement('div');
-            icon.className = `roster-icon ${isSender ? 'sender' : ''}`;
-            item.appendChild(icon);
-            item.innerHTML += `<b>${peer.name}</b> ${isSender ? '📡' : '🎧'}`;
-            rosterList.appendChild(item);
-        });
-    }
-
+    // --- WEBRTC ---
     async function handleOffer(sdp, senderId) {
-        log("Negotiating WebRTC...");
         pc = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }] });
-
-        pc.onicecandidate = (e) => {
-            if (e.candidate) socket.send(JSON.stringify({ ...e.candidate.toJSON(), type: 'candidate', id: myId, targetId: senderId }));
+        
+        pc.onicecandidate = e => {
+            if (e.candidate) ws.send(JSON.stringify({ type: 'candidate', ...e.candidate.toJSON(), id: myId, targetId: senderId }));
         };
-
+        
         pc.onconnectionstatechange = () => {
-            log(`Connection State: ${pc.connectionState}`);
-            if (pc.connectionState === 'connected') {
-                statusLabel.innerText = "Live Stream Active";
-                statusLabel.className = "status online";
-            }
+            if (pc.connectionState === 'connected') setConnectedUI();
+            if (pc.connectionState === 'disconnected') resetUI();
         };
 
-        pc.ontrack = (event) => {
-            log("Audio Track Received! 🔈");
-            document.getElementById('inputs').style.display = 'none';
-            document.getElementById('meter-display').style.display = 'flex';
-            document.getElementById('remote-audio').srcObject = event.streams[0];
-            setupMetering(event.streams[0]);
-        };
+        pc.ontrack = e => setupAudioPipeline(e.streams[0]);
 
-        await pc.setRemoteDescription(new RTCSessionDescription({ type: "offer", sdp: sdp }));
+        await pc.setRemoteDescription(new RTCSessionDescription({ type: 'offer', sdp }));
         const answer = await pc.createAnswer();
         
-        // Munge SDP for High Fidelity (Stereo, 510kbps)
+        // Force High Quality Stereo
         answer.sdp = answer.sdp.replace("useinbandfec=1", "useinbandfec=1;stereo=1;sprop-stereo=1;maxaveragebitrate=510000");
         
         await pc.setLocalDescription(answer);
-        socket.send(JSON.stringify({ type: "answer", sdp: answer.sdp, id: myId, targetId: senderId }));
+        ws.send(JSON.stringify({ type: 'answer', sdp: answer.sdp, id: myId, targetId: senderId }));
     }
 
-    function setupMetering(stream) {
-        // [FIX] Audio routing for iPhone/iOS
+    // --- AUDIO PIPELINE ---
+    function setupAudioPipeline(stream) {
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+        
         const source = audioCtx.createMediaStreamSource(stream);
+        analyser = audioCtx.createAnalyser();
+        analyser.fftSize = 512;
         
-        // 1. CRITICAL: Connect Source to Destination (Speakers) so audio plays
-        source.connect(audioCtx.destination);
+        // MUTE LOGIC NODE
+        gainNode = audioCtx.createGain();
+        gainNode.gain.value = isMuted ? 0 : 1.0;
+        
+        // Graph: Source -> Analyser -> Gain -> Destination
+        source.connect(analyser);
+        analyser.connect(gainNode);
+        gainNode.connect(audioCtx.destination);
+        
+        log("Audio Pipeline Active");
+        
+        // Start Metering Loop
+        drawMeters();
+        
+        // Keep-Alive for iOS
+        const tag = document.getElementById('audio-tag');
+        tag.srcObject = stream;
+        tag.muted = true;
+        tag.play().catch(e => {});
+    }
 
-        // 2. Connect Source to Splitter for Metering
-        const splitter = audioCtx.createChannelSplitter(2);
-        source.connect(splitter);
+    function drawMeters() {
+        if (!analyser || !isConnected) return;
+        const data = new Uint8Array(analyser.frequencyBinCount);
+        analyser.getByteFrequencyData(data);
         
-        const analyze = (idx, el) => {
-            const proc = audioCtx.createAnalyser();
-            proc.fftSize = 256;
-            splitter.connect(proc, idx);
-            const data = new Uint8Array(proc.frequencyBinCount);
-            const draw = () => {
-                proc.getByteFrequencyData(data);
-                const avg = data.reduce((a, b) => a + b) / data.length;
-                el.style.height = Math.min(Math.sqrt(avg / 255) * 100, 100) + "%";
-                requestAnimationFrame(draw);
-            };
-            draw();
-        };
-        analyze(0, document.getElementById('fill-l'));
-        analyze(1, document.getElementById('fill-r'));
+        let sum = 0;
+        for (let i=0; i<data.length; i++) sum += data[i];
+        const avg = sum / data.length;
+        const pct = Math.min(100, (avg / 64) * 100);
+        
+        meterL.style.height = pct + "%";
+        meterR.style.height = pct + "%";
+        requestAnimationFrame(drawMeters);
+    }
+
+    // --- UI STATES ---
+    function setConnectedUI() {
+        isConnected = true;
+        statusText.textContent = "LIVE";
+        statusDot.className = "dot active";
+        
+        inputArea.style.display = "none";
+        
+        btnMain.textContent = "Disconnect";
+        btnMain.className = "btn disconnect"; // Red Button
+        btnMain.disabled = false;
+        
+        btnMute.style.display = "flex"; // Show Mute Toggle
+    }
+
+    function resetUI() {
+        isConnected = false;
+        statusText.textContent = "DISCONNECTED";
+        statusDot.className = "dot";
+        
+        inputArea.style.display = "flex";
+        
+        btnMain.className = "btn"; // Blue Button
+        btnMain.disabled = false;
+        btnMain.textContent = "Connect";
+        
+        btnMute.style.display = "none";
+        
+        meterL.style.height = "0%";
+        meterR.style.height = "0%";
     }
 </script>
 </body>
