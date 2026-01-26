@@ -9,72 +9,95 @@ const wss = new WebSocket.Server({ server });
 
 const PORT = process.env.PORT || 3000;
 
+console.log(`[SERVER] Signaling Server v0.3 (Express + KeepAlive) starting on ${PORT}`);
+
 // Serve the static HTML receiver page
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'index.html'));
 });
 
 // Store connected peers
-// This maintains the "Room Roster" state required by the app [cite: 208, 246]
+[cite_start]// This maintains the "Room Roster" state required by the app [cite: 208, 246]
 let rooms = {}; 
 
 wss.on('connection', (ws) => {
     let currentUser = null;
 
     ws.on('message', (message) => {
-        const data = JSON.parse(message);
+        try {
+            const data = JSON.parse(message);
 
-        switch (data.type) {
-            case 'join':
-                // logic matches 'join' message in NwSessionCoordinator [cite: 222]
-                currentUser = {
-                    id: data.id,
-                    name: data.name,
-                    room: data.room,
-                    role: data.role || 'receiver',
-                    isMicEnabled: data.isMicEnabled || false,
-                    isMusicEnabled: data.isMusicEnabled || true,
-                    isBroadcasting: data.isBroadcasting || false,
-                    ws: ws
-                };
+            // [NEW] Keep-Alive Handler
+            // Silently ignore 'ping' messages. This keeps the WebSocket connection
+            // active and prevents Render from sleeping due to inactivity.
+            if (data.type === 'ping') {
+                return; 
+            }
 
-                if (!rooms[data.room]) rooms[data.room] = [];
-                rooms[data.room].push(currentUser);
+            switch (data.type) {
+                case 'join':
+                    [cite_start]// logic matches 'join' message in NwSessionCoordinator [cite: 222]
+                    currentUser = {
+                        id: data.id,
+                        name: data.name,
+                        room: data.room,
+                        role: data.role || 'receiver',
+                        isMicEnabled: data.isMicEnabled || false,
+                        isMusicEnabled: data.isMusicEnabled || true,
+                        isBroadcasting: data.isBroadcasting || false,
+                        ws: ws
+                    };
 
-                console.log(`👤 ${currentUser.name} joined room: ${data.room}`);
+                    if (!rooms[data.room]) rooms[data.room] = [];
+                    rooms[data.room].push(currentUser);
 
-                // Send full roster update to all in room [cite: 234, 246]
-                broadcastRoster(data.room);
-                break;
+                    console.log(`👤 ${currentUser.name} joined room: ${data.room}`);
 
-            case 'offer':
-            case 'answer':
-            case 'candidate':
-                // Relay WebRTC signaling between Mac App and JS Receiver [cite: 242, 243, 244, 267]
-                relayMessage(data);
-                break;
+                    [cite_start]// Send full roster update to all in room [cite: 234, 246]
+                    broadcastRoster(data.room);
+                    break;
 
-            case 'status-update':
-                // Update user state for UI meters/icons [cite: 219, 240]
-                updateUserStatus(data);
-                break;
+                case 'offer':
+                case 'answer':
+                case 'candidate':
+                    [cite_start]// Relay WebRTC signaling between Mac App and JS Receiver [cite: 242, 243, 244, 267]
+                    relayMessage(data);
+                    break;
+
+                case 'status-update':
+                    [cite_start]// Update user state for UI meters/icons [cite: 219, 240]
+                    updateUserStatus(data);
+                    break;
+            }
+        } catch (e) {
+            console.error("Error parsing message:", e);
         }
     });
 
     ws.on('close', () => {
         if (currentUser) {
             console.log(`👋 ${currentUser.name} left.`);
-            rooms[currentUser.room] = rooms[currentUser.room].filter(u => u.id !== currentUser.id);
-            broadcastRoster(currentUser.room); // [cite: 238]
+            if (rooms[currentUser.room]) {
+                rooms[currentUser.room] = rooms[currentUser.room].filter(u => u.id !== currentUser.id);
+                // Clean up empty rooms
+                if (rooms[currentUser.room].length === 0) {
+                    delete rooms[currentUser.room];
+                } else {
+                    [cite_start]broadcastRoster(currentUser.room); // [cite: 238]
+                }
+            }
         }
     });
 });
 
 function relayMessage(data) {
-    const room = rooms[Object.keys(rooms).find(r => rooms[r].some(u => u.id === data.id))];
-    if (!room) return;
+    // Find the room this user belongs to
+    const roomName = Object.keys(rooms).find(r => rooms[r].some(u => u.id === data.id));
+    if (!roomName) return;
 
+    const room = rooms[roomName];
     const target = room.find(u => u.id === data.targetId);
+    
     if (target && target.ws.readyState === WebSocket.OPEN) {
         target.ws.send(JSON.stringify(data));
     }
