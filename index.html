@@ -8,7 +8,7 @@
         :root { 
             --bg: #000000; --card: #1c1c1e; --accent: #0a84ff; 
             --text: #f2f2f7; --danger: #ff453a; --success: #32d74b; 
-            --warn: #ffd60a; --info: #0a84ff;
+            --warn: #ffd60a; --info: #0a84ff; --ice: #bd53ed;
         }
         body { 
             font-family: -apple-system, system-ui; background: var(--bg); color: var(--text); 
@@ -74,8 +74,11 @@
         .mini-meter-fill { width: 100%; position: absolute; bottom: 0; background: var(--success); height: 0%; }
         .bitrate { font-family: monospace; font-size: 0.7rem; color: #666; margin-top: 4px; }
         
-        #console { height: 100px; background: #000; border-radius: 8px; border: 1px solid #333; padding: 10px; font-family: monospace; font-size: 10px; color: #636366; overflow-y: auto; width: 100%; box-sizing: border-box; }
-        .log-err { color: var(--danger); } .log-mic { color: #d63aff; }
+        #console { height: 150px; background: #000; border-radius: 8px; border: 1px solid #333; padding: 10px; font-family: monospace; font-size: 9px; color: #636366; overflow-y: auto; width: 100%; box-sizing: border-box; }
+        .log-err { color: var(--danger); } 
+        .log-mic { color: #d63aff; }
+        .log-ice { color: var(--ice); }
+        .log-sig { color: #8e8e93; }
     </style>
 </head>
 <body>
@@ -154,6 +157,8 @@
         line.innerText = `[${new Date().toLocaleTimeString().split(' ')[0]}] ${msg}`;
         if(type==='err') line.className='log-err';
         if(type==='mic') line.className='log-mic';
+        if(type==='ice') line.className='log-ice';
+        if(type==='sig') line.className='log-sig';
         logEl.prepend(line);
     }
 
@@ -267,15 +272,25 @@
         if(msg.type === 'offer') {
             if(studioPC) studioPC.close();
             studioPC = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }] });
+            
+            // LOGGING
+            studioPC.oniceconnectionstatechange = () => log(`[STUDIO] ICE State: ${studioPC.iceConnectionState}`, "ice");
+            studioPC.onconnectionstatechange = () => {
+                log(`[STUDIO] Conn State: ${studioPC.connectionState}`, "info");
+                if(studioPC.connectionState === 'connected') setUIState('connected');
+            }
+
             studioPC.ontrack = e => {
                 log("🎵 Studio Stream Active");
                 audioEl.srcObject = e.streams[0];
                 startVisuals(e.streams[0]);
                 startStats(studioPC);
             };
-            studioPC.onconnectionstatechange = () => {
-                if(studioPC.connectionState === 'connected') setUIState('connected');
-            }
+            
+            studioPC.onicecandidate = e => {
+                if(e.candidate) ws.send(JSON.stringify({ type: 'candidate', ...e.candidate.toJSON(), id: myId, targetId: msg.id }));
+            };
+
             await studioPC.setRemoteDescription(new RTCSessionDescription({ type: 'offer', sdp: msg.sdp }));
             const answer = await studioPC.createAnswer();
             await studioPC.setLocalDescription(answer);
@@ -289,9 +304,10 @@
     // --- VOICE MESH LOGIC (PEER TO PEER) ---
     function getVoicePC(peerId) {
         if(!voicePeerConnections[peerId]) {
+            log(`[MESH] Creating PC for ${peerId.substring(0,4)}`, "info");
             const pc = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }] });
             
-            // 1. ADD TRANSCEIVER (Force Audio Channel even if mic is muted)
+            // 1. ADD TRANSCEIVER (Force Audio Channel)
             pc.addTransceiver('audio', { direction: 'sendrecv' });
 
             // 2. ADD LOCAL TRACKS
@@ -301,7 +317,7 @@
 
             // 3. HANDLE REMOTE TRACKS
             pc.ontrack = e => {
-                log(`🗣 Voice from ${peerId.substring(0,4)}`);
+                log(`🗣 Voice Track from ${peerId.substring(0,4)}`, "info");
                 const aud = document.createElement('audio');
                 aud.srcObject = e.streams[0];
                 aud.autoplay = true;
@@ -310,15 +326,25 @@
                 document.getElementById('voice-container').appendChild(aud);
             };
 
-            // 4. ICE HANDLING
+            // 4. ICE HANDLING (With Detailed Logging)
             pc.onicecandidate = e => {
-                if(e.candidate) ws.send(JSON.stringify({ type: 'candidate', ...e.candidate.toJSON(), id: myId, targetId: peerId }));
+                if(e.candidate) {
+                    log(`[ICE] 📤 Local Candidate (${e.candidate.type})`, "ice");
+                    ws.send(JSON.stringify({ type: 'candidate', ...e.candidate.toJSON(), id: myId, targetId: peerId }));
+                } else {
+                    log(`[ICE] Local Gathering Complete`, "ice");
+                }
             };
             
-            // 5. STATE LOGGING
+            pc.oniceconnectionstatechange = () => {
+                const state = pc.iceConnectionState;
+                log(`[ICE] ${peerId.substring(0,4)} State: ${state}`, state==='failed'?'err':'ice');
+            };
+            
             pc.onconnectionstatechange = () => {
-                log(`[${peerId.substring(0,4)}] Voice: ${pc.connectionState}`);
-                updateRosterStatus(peerId, pc.connectionState);
+                const state = pc.connectionState;
+                log(`[PC] ${peerId.substring(0,4)} State: ${state}`, "info");
+                updateRosterStatus(peerId, state);
             };
 
             voicePeerConnections[peerId] = { pc: pc, candidates: [] };
@@ -332,10 +358,9 @@
 
         try {
             if(msg.type === 'offer') {
-                log(`📥 Offer from ${msg.id.substring(0,4)}`);
+                log(`📥 Offer from ${msg.id.substring(0,4)}`, "sig");
                 await pc.setRemoteDescription(new RTCSessionDescription({ type: 'offer', sdp: msg.sdp }));
                 
-                // Flush Buffer
                 while(session.candidates.length) pc.addIceCandidate(session.candidates.shift());
 
                 const answer = await pc.createAnswer();
@@ -343,14 +368,14 @@
                 ws.send(JSON.stringify({ type: 'answer', sdp: answer.sdp, id: myId, targetId: msg.id }));
             }
             else if(msg.type === 'answer') {
-                log(`📥 Answer from ${msg.id.substring(0,4)}`);
+                log(`📥 Answer from ${msg.id.substring(0,4)}`, "sig");
                 await pc.setRemoteDescription(new RTCSessionDescription({ type: 'answer', sdp: msg.sdp }));
-                // Flush Buffer
                 while(session.candidates.length) pc.addIceCandidate(session.candidates.shift());
             }
             else if(msg.type === 'candidate') {
+                log(`[ICE] 📥 Remote Candidate`, "ice");
                 if(pc.remoteDescription) pc.addIceCandidate(msg);
-                else session.candidates.push(msg); // BUFFER if remote desc not set
+                else session.candidates.push(msg);
             }
         } catch(e) {
             log(`WebRTC Error (${msg.type}): ${e.message}`, "err");
@@ -366,12 +391,11 @@
         const host = roster.find(u => u.isBroadcasting);
         if(host) broadcasterId = host.id;
 
-        // Initiate mesh connections
         roster.forEach(peer => {
             if(peer.id === myId || peer.id === broadcasterId) return;
             // Glare resolution: Lower ID calls Higher ID
             if(myId < peer.id && !voicePeerConnections[peer.id]) {
-                log(`📞 Calling ${peer.name}...`);
+                log(`📞 Calling ${peer.name}...`, "info");
                 const session = getVoicePC(peer.id);
                 session.pc.createOffer().then(offer => {
                     session.pc.setLocalDescription(offer);
@@ -388,7 +412,6 @@
             const isMe = u.id === myId;
             const isSender = u.isBroadcasting;
             
-            // Connection Dot Logic
             let connClass = 'peer-dot';
             if(voicePeerConnections[u.id]) {
                 const state = voicePeerConnections[u.id].pc.connectionState;
@@ -397,7 +420,6 @@
                 connClass += ' connected';
             }
             
-            // Icons
             const icon = isSender ? 
                 `<svg style="width:16px;color:#0a84ff" viewBox="0 0 24 24"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/><path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/></svg>` : 
                 `<svg style="width:16px;color:#666" viewBox="0 0 24 24"><path d="M12 3c-4.97 0-9 4.03-9 9v7c0 1.1.9 2 2 2h4v-8H5v-1c0-3.87 3.13-7 7-7s7 3.13 7 7v1h-4v8h4c1.1 0 2-.9 2-2v-7c0-4.97-4.03-9-9-9z"/></svg>`;
