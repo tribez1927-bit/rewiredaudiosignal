@@ -16,46 +16,47 @@
         }
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background: var(--bg); color: var(--text); display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; padding: 10px; box-sizing: border-box; }
         
-        .container { background: var(--card); padding: 24px; border-radius: 20px; width: 100%; max-width: 380px; display: flex; flex-direction: column; gap: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
+        .container { background: var(--card); padding: 24px; border-radius: 20px; width: 100%; max-width: 380px; display: flex; flex-direction: column; gap: 24px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
         
         /* HEADER */
         .header { text-align: center; border-bottom: 1px solid #333; padding-bottom: 15px; }
         h1 { margin: 0; font-size: 0.9rem; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: #8e8e93; margin-bottom: 8px; }
         
         .status-container { display: flex; flex-direction: column; align-items: center; gap: 4px; }
-        .status-row { display: flex; align-items: center; }
         
-        .status-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #444; margin-right: 6px; transition: 0.3s; }
+        /* STATUS ROW: Dot + Text + Meters */
+        .status-row { display: flex; align-items: center; justify-content: center; height: 16px; }
+        
+        .status-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #444; margin-right: 8px; transition: 0.3s; }
         .status-dot.on { background: var(--success); box-shadow: 0 0 8px var(--success); }
-        .status-text { font-size: 0.75rem; font-weight: 600; color: #fff; letter-spacing: 0.5px; }
+        .status-text { font-size: 0.75rem; font-weight: 600; color: #fff; letter-spacing: 0.5px; line-height: 1; }
         
-        /* NEW: Bitrate Label */
-        .bitrate { font-family: "SF Mono", monospace; font-size: 0.7rem; color: #666; font-weight: 500; height: 1em; }
-
-        /* MONITORING STRIP (Meters + Mute) */
-        .monitor-row { display: flex; gap: 12px; height: 140px; }
-        
-        .meters { flex: 1; display: flex; gap: 6px; background: #000; border-radius: 12px; padding: 10px; border: 1px solid #333; }
-        .meter-col { flex: 1; background: #1c1c1e; border-radius: 6px; position: relative; overflow: hidden; }
-        .meter-fill { 
-            position: absolute; bottom: 0; width: 100%; 
-            background: var(--success); /* SOLID GREEN */
-            transition: height 0.05s ease-out; height: 0%; 
-            opacity: 0.9;
+        /* MINI METERS (In Header) */
+        .mini-meters {
+            display: none; /* Hidden by default */
+            gap: 2px;
+            margin-left: 10px;
+            height: 10px; /* Match font height */
+            align-items: flex-end;
+        }
+        .mini-meter-col {
+            width: 4px;
+            height: 100%;
+            background: #333;
+            border-radius: 1px;
+            position: relative;
+            overflow: hidden;
+        }
+        .mini-meter-fill {
+            width: 100%;
+            position: absolute;
+            bottom: 0;
+            background: var(--success);
+            height: 0%;
+            transition: height 0.05s ease-out;
         }
 
-        /* CIRCULAR MUTE BUTTON */
-        .mute-container { display: flex; flex-direction: column; justify-content: flex-end; }
-        #btn-mute { 
-            width: 56px; height: 56px; border-radius: 50%; border: 1px solid #333;
-            background: #2c2c2e; color: #8e8e93; cursor: pointer;
-            display: flex; align-items: center; justify-content: center;
-            transition: all 0.2s; -webkit-tap-highlight-color: transparent;
-        }
-        #btn-mute:active { transform: scale(0.95); }
-        #btn-mute.active { background: #fff; color: #000; border-color: #fff; } /* Unmuted State */
-        
-        svg { width: 24px; height: 24px; fill: currentColor; }
+        .bitrate { font-family: "SF Mono", monospace; font-size: 0.7rem; color: #666; font-weight: 500; margin-top: 4px; }
 
         /* INPUTS */
         .input-group { display: flex; gap: 10px; }
@@ -66,20 +67,37 @@
         }
         input:focus { background: #3a3a3c; }
 
+        /* CONTROLS AREA */
+        .controls-row { display: flex; gap: 12px; align-items: center; }
+
         /* MAIN ACTION BUTTON */
         #btn-main { 
-            width: 100%; padding: 16px; border-radius: 14px; border: none;
+            flex: 1; padding: 16px; border-radius: 14px; border: none;
             font-weight: 600; font-size: 1rem; cursor: pointer; color: white;
             transition: all 0.2s; -webkit-tap-highlight-color: transparent;
             background: var(--accent);
+            height: 56px;
         }
         #btn-main:active { opacity: 0.8; transform: scale(0.98); }
         #btn-main:disabled { background: #3a3a3c; color: #666; cursor: wait; }
         #btn-main.disconnect { background: var(--danger); }
 
+        /* MUTE BUTTON */
+        #btn-mute { 
+            width: 56px; height: 56px; border-radius: 14px; border: none;
+            background: #2c2c2e; color: #8e8e93; cursor: pointer;
+            display: none; /* Hidden until connected */
+            align-items: center; justify-content: center;
+            transition: all 0.2s; -webkit-tap-highlight-color: transparent;
+        }
+        #btn-mute:active { transform: scale(0.95); }
+        #btn-mute.active { background: #fff; color: #000; } /* Unmuted State */
+        
+        svg { width: 24px; height: 24px; fill: currentColor; }
+
         /* LOGS */
         #console { 
-            height: 100px; background: #000; border-radius: 8px; border: 1px solid #333;
+            height: 120px; background: #000; border-radius: 8px; border: 1px solid #333;
             padding: 10px; font-family: "SF Mono", monospace; font-size: 10px; 
             color: #636366; overflow-y: auto; 
         }
@@ -96,22 +114,13 @@
             <div class="status-row">
                 <span id="status-dot" class="status-dot"></span>
                 <span id="status-text" class="status-text">DISCONNECTED</span>
+                
+                <div id="mini-meters" class="mini-meters">
+                    <div class="mini-meter-col"><div id="m-l" class="mini-meter-fill"></div></div>
+                    <div class="mini-meter-col"><div id="m-r" class="mini-meter-fill"></div></div>
+                </div>
             </div>
             <div id="bitrate" class="bitrate">0 kbps</div>
-        </div>
-    </div>
-
-    <div class="monitor-row">
-        <div class="meters">
-            <div class="meter-col"><div id="m-l" class="meter-fill"></div></div>
-            <div class="meter-col"><div id="m-r" class="meter-fill"></div></div>
-        </div>
-        
-        <div class="mute-container">
-            <button id="btn-mute" class="active">
-                <svg id="icon-vol" viewBox="0 0 24 24"><path d="M14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77zm-4 0h-2.5l-5 5H0v6h2.5l5 5H10V3.23z"/></svg>
-                <svg id="icon-mute" viewBox="0 0 24 24" style="display:none"><path d="M19 12c0 1.72-1.02 3.22-2.5 4v2.15c2.34-.99 4-3.32 4-6.15 0-2.83-1.66-5.16-4-6.15V8c1.48.78 2.5 2.28 2.5 4zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06c1.38-.31 2.63-.95 3.69-1.81L19.73 21 21 19.73 4.27 3zM12 4L9.91 6.09 12 8.18V4z"/></svg>
-            </button>
         </div>
     </div>
 
@@ -120,7 +129,14 @@
         <input id="user" placeholder="Your Name">
     </div>
 
-    <button id="btn-main">Listen Live</button>
+    <div class="controls-row">
+        <button id="btn-main">Listen Live</button>
+        
+        <button id="btn-mute" class="active">
+            <svg id="icon-vol" viewBox="0 0 24 24"><path d="M14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77zm-4 0h-2.5l-5 5H0v6h2.5l5 5H10V3.23z"/></svg>
+            <svg id="icon-mute" viewBox="0 0 24 24" style="display:none"><path d="M19 12c0 1.72-1.02 3.22-2.5 4v2.15c2.34-.99 4-3.32 4-6.15 0-2.83-1.66-5.16-4-6.15V8c1.48.78 2.5 2.28 2.5 4zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06c1.38-.31 2.63-.95 3.69-1.81L19.73 21 21 19.73 4.27 3zM12 4L9.91 6.09 12 8.18V4z"/></svg>
+        </button>
+    </div>
     
     <div id="console"></div>
 </div>
@@ -144,6 +160,7 @@
     const statusDot = document.getElementById('status-dot');
     const statusText = document.getElementById('status-text');
     const bitrateEl = document.getElementById('bitrate');
+    const miniMeters = document.getElementById('mini-meters');
     
     const btnMain = document.getElementById('btn-main');
     const btnMute = document.getElementById('btn-mute');
@@ -156,7 +173,6 @@
     
     function log(msg, type='info') {
         const line = document.createElement('div');
-        const time = new Date().toLocaleTimeString().split(' ')[0];
         line.textContent = `> ${msg}`;
         if (type === 'err') line.className = 'log-err';
         logEl.prepend(line);
@@ -223,6 +239,8 @@
             statusText.textContent = "CONNECTING";
             statusDot.className = "status-dot";
             inputPanel.style.opacity = "0.5";
+            miniMeters.style.display = "none";
+            btnMute.style.display = "none";
         }
         else if (state === 'connected') {
             isConnected = true;
@@ -234,6 +252,8 @@
             statusDot.className = "status-dot on";
             
             inputPanel.style.display = "none";
+            miniMeters.style.display = "flex"; // Show Meters
+            btnMute.style.display = "flex";    // Show Mute
         }
         else if (state === 'disconnected') {
             isConnected = false;
@@ -247,6 +267,9 @@
             
             inputPanel.style.display = "flex";
             inputPanel.style.opacity = "1";
+            
+            miniMeters.style.display = "none"; // Hide Meters
+            btnMute.style.display = "none";    // Hide Mute
             
             meterL.style.height = "0%";
             meterR.style.height = "0%";
@@ -291,7 +314,7 @@
         pc.ontrack = e => {
             log("Audio Track Received");
             setupAudio(e.streams[0]);
-            startStats(pc); // Start Bitrate Monitor
+            startStats(pc);
         };
 
         await pc.setRemoteDescription(new RTCSessionDescription({ type: 'offer', sdp }));
@@ -342,7 +365,6 @@
         animationId = requestAnimationFrame(drawMeters);
     }
 
-    // --- STATISTICS MONITOR (Bitrate) ---
     function startStats(pc) {
         let prevBytes = 0;
         let prevTime = Date.now();
@@ -350,28 +372,21 @@
         clearInterval(statsInterval);
         statsInterval = setInterval(async () => {
             if (!pc || pc.connectionState !== 'connected') return;
-            
             const stats = await pc.getStats();
             stats.forEach(r => {
                 if (r.type === 'inbound-rtp' && r.kind === 'audio') {
                     const now = Date.now();
                     const bytes = r.bytesReceived;
-                    
                     if (prevBytes > 0) {
-                        // Calculate Bitrate (kbps)
-                        // (Delta Bytes * 8 bits) / (Delta Time in Seconds * 1000)
                         const kbits = (bytes - prevBytes) * 8 / 1000;
                         const dt = (now - prevTime) / 1000;
-                        const kbps = kbits / dt;
-                        
-                        bitrateEl.textContent = `${kbps.toFixed(0)} kbps`;
+                        bitrateEl.textContent = `${(kbits/dt).toFixed(0)} kbps`;
                     }
-                    
                     prevBytes = bytes;
                     prevTime = now;
                 }
             });
-        }, 1000); // Update once per second
+        }, 1000);
     }
 </script>
 </body>
