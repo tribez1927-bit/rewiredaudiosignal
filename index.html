@@ -13,6 +13,7 @@
             --danger: #ff453a; 
             --success: #32d74b; 
             --warn: #ffd60a; 
+            --info: #0a84ff;
         }
         
         body { 
@@ -41,12 +42,12 @@
         .status-dot.on { background: var(--success); box-shadow: 0 0 8px var(--success); }
         .status-text { font-size: 0.75rem; font-weight: 600; color: #fff; letter-spacing: 0.5px; line-height: 1; white-space: nowrap; }
         
-        /* TALK BUTTON (Header Right) */
+        /* TALK BUTTON */
         #btn-talk {
             position: absolute; right: 0; top: 0;
             width: 32px; height: 32px;
             background: #2c2c2e; border-radius: 50%;
-            display: none; /* Hidden until connected AND mic approved */
+            display: none; 
             align-items: center; justify-content: center;
             cursor: pointer; transition: all 0.2s;
             border: 1px solid #333;
@@ -112,12 +113,14 @@
 
         /* LOGS */
         #console { 
-            height: 100px; background: #000; border-radius: 8px; border: 1px solid #333;
+            height: 120px; background: #000; border-radius: 8px; border: 1px solid #333;
             padding: 10px; font-family: "SF Mono", monospace; font-size: 10px; 
             color: #636366; overflow-y: auto; width: 100%; box-sizing: border-box;
         }
         .log-err { color: var(--danger); }
         .log-warn { color: var(--warn); }
+        .log-info { color: var(--info); }
+        .log-mic { color: #d63aff; } /* Purple for Mic events */
     </style>
 </head>
 <body>
@@ -175,7 +178,7 @@
     const WS_URL = window.location.origin.replace(/^http/, 'ws');
     const myId = 'rx-' + Math.floor(Math.random() * 10000);
     
-    // --- GLOBAL STATE ---
+    // --- STATE ---
     let ws, audioCtx, analyser;
     let studioPC; 
     const voicePeerConnections = {}; 
@@ -216,9 +219,14 @@
 
     function log(msg, type='info') {
         const line = document.createElement('div');
-        line.textContent = `> ${msg}`;
+        const time = new Date().toLocaleTimeString().split(' ')[0];
+        line.textContent = `[${time}] ${msg}`;
+        
         if (type === 'err') line.className = 'log-err';
-        if (type === 'warn') line.className = 'log-warn';
+        else if (type === 'warn') line.className = 'log-warn';
+        else if (type === 'mic') line.className = 'log-mic';
+        else line.className = 'log-info';
+        
         logEl.prepend(line);
     }
 
@@ -233,7 +241,7 @@
             setUIState('connecting');
             
             try {
-                // 1. Audio Context (For Meters)
+                // 1. Audio Context
                 audioCtx = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: 'interactive', sampleRate: 48000 });
                 await audioCtx.resume();
                 
@@ -243,14 +251,15 @@
                 audioEl.play().catch(e=>{});
                 
                 // 3. Mic Access (REQUEST NOW)
-                // We ask for mic access BEFORE connecting so the stream is ready for WebRTC.
+                log("🎙 Requesting Mic Access...", "mic");
                 try {
-                    log("Requesting Mic...", "info");
                     localVoiceStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                    localVoiceStream.getAudioTracks().forEach(t => t.enabled = false); // Mute initially
-                    log("Mic Ready", "info");
+                    localVoiceStream.getAudioTracks().forEach(t => {
+                        t.enabled = false; // Mute initially
+                        log(`🎙 Mic Track Acquired: ${t.label}`, "mic");
+                    });
                 } catch (e) {
-                    log("Mic Denied: Talk disabled", "warn");
+                    log("🚫 Mic Access Denied/Failed: " + e.message, "err");
                     localVoiceStream = null;
                 }
 
@@ -284,7 +293,6 @@
     btnMute.addEventListener('click', () => {
         isMuted = !isMuted;
         audioEl.muted = isMuted;
-        // Also mute voice participants? 
         document.querySelectorAll('#voice-container audio').forEach(el => el.muted = isMuted);
         
         updateButtons();
@@ -292,11 +300,26 @@
     });
 
     // --- TALK TOGGLE (VOICE CHANNEL) ---
-    btnTalk.addEventListener('click', () => {
-        if (!localVoiceStream) return; // Should be hidden if null, but safe check
+    btnTalk.addEventListener('click', async () => {
+        if (!localVoiceStream) {
+            log("[UI] Talk ignored: No local stream", "err");
+            // Try re-acquire?
+            try {
+                log("🎙 Retry Mic...", "mic");
+                localVoiceStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            } catch(e) {
+                return log("🚫 Retry failed: " + e.message, "err");
+            }
+        }
         
         isTalking = !isTalking;
-        localVoiceStream.getAudioTracks().forEach(t => t.enabled = isTalking);
+        const tracks = localVoiceStream.getAudioTracks();
+        if (tracks.length > 0) {
+            tracks.forEach(t => t.enabled = isTalking);
+            log(isTalking ? "🎙 Mic UNMUTED" : "🎙 Mic MUTED", "mic");
+        } else {
+            log("[UI] Error: Stream has no tracks", "err");
+        }
         
         updateButtons();
         broadcastStatus();
@@ -325,7 +348,7 @@
         ws = new WebSocket(WS_URL);
         
         ws.onopen = () => {
-            log("Server Connected");
+            log("Server Connected", "info");
             ws.send(JSON.stringify({ 
                 type: 'join', room, name: user, id: myId, role: 'receiver', 
                 isBroadcasting: false
@@ -376,9 +399,8 @@
             if (peer.id === broadcasterId) return;
             
             if (!voicePeerConnections[peer.id]) {
-                log(`New Voice Peer: ${peer.name}`);
+                log(`[WEBRTC] Creating voice connection to ${peer.name} (${peer.id.substring(0,4)})`, "info");
                 createVoiceConnection(peer.id);
-                // Mesh Logic: Lower ID initiates call
                 if (myId < peer.id) initiateVoiceCall(peer.id);
             }
         });
@@ -391,19 +413,30 @@
             if (e.candidate) ws.send(JSON.stringify({ type: 'candidate', ...e.candidate.toJSON(), id: myId, targetId: peerId }));
         };
         
+        pc.onconnectionstatechange = () => {
+            log(`[WEBRTC] Voice State (${peerId.substring(0,4)}): ${pc.connectionState}`, "info");
+        };
+
         pc.ontrack = e => {
-            log(`Voice received from ${peerId.substring(0,4)}`);
+            log(`[AUDIO] Voice track received from ${peerId.substring(0,4)}`, "info");
             const audio = document.createElement('audio');
             audio.srcObject = e.streams[0];
             audio.autoplay = true;
             audio.playsInline = true;
-            audio.muted = isMuted; // Sync mute state
+            audio.muted = isMuted; 
             document.getElementById('voice-container').appendChild(audio);
+            
+            audio.onplay = () => log(`[AUDIO] Playing voice from ${peerId.substring(0,4)}`, "info");
+            audio.onerror = (err) => log(`[AUDIO] Error playing voice: ${err}`, "err");
         };
         
-        // CRITICAL: Add local stream tracks immediately (even if muted)
         if (localVoiceStream) {
-            localVoiceStream.getTracks().forEach(track => pc.addTrack(track, localVoiceStream));
+            localVoiceStream.getTracks().forEach(track => {
+                pc.addTrack(track, localVoiceStream);
+                log(`[WEBRTC] Added local track to ${peerId.substring(0,4)}`, "mic");
+            });
+        } else {
+            log(`[WEBRTC] Warning: Created connection without local stream`, "warn");
         }
         
         voicePeerConnections[peerId] = pc;
@@ -411,6 +444,7 @@
     }
 
     async function initiateVoiceCall(peerId) {
+        log(`[WEBRTC] Initiating Call to ${peerId.substring(0,4)}`, "info");
         const pc = voicePeerConnections[peerId];
         const offer = await pc.createOffer();
         await pc.setLocalDescription(offer);
@@ -418,6 +452,7 @@
     }
 
     async function handleVoiceOffer(sdp, peerId) {
+        log(`[WEBRTC] Received Offer from ${peerId.substring(0,4)}`, "info");
         let pc = voicePeerConnections[peerId];
         if (!pc) pc = createVoiceConnection(peerId);
         
@@ -428,6 +463,7 @@
     }
 
     async function handleVoiceAnswer(sdp, peerId) {
+        log(`[WEBRTC] Received Answer from ${peerId.substring(0,4)}`, "info");
         const pc = voicePeerConnections[peerId];
         if (pc) await pc.setRemoteDescription(new RTCSessionDescription({ type: 'answer', sdp }));
     }
@@ -442,12 +478,13 @@
         };
         
         studioPC.onconnectionstatechange = () => {
+            log(`[STUDIO] Connection State: ${studioPC.connectionState}`, "info");
             if (studioPC.connectionState === 'connected') setUIState('connected');
             if (studioPC.connectionState === 'failed') setUIState('disconnected');
         };
 
         studioPC.ontrack = e => {
-            log("Studio Audio Received");
+            log("[STUDIO] Audio Track Received", "info");
             setupStudioPipeline(e.streams[0]);
             startStats(studioPC);
         };
@@ -498,9 +535,8 @@
             inputPanel.style.display = "none"; miniMeters.style.display = "flex";
             btnMute.style.display = "flex"; rosterPanel.style.display = "flex";
             
-            // Only show talk button if mic is available
-            if (localVoiceStream) btnTalk.style.display = "flex";
-            else btnTalk.style.display = "none";
+            // Show talk button regardless, we'll error if clicked without mic
+            btnTalk.style.display = "flex";
         } else {
             isConnected = false;
             btnMain.textContent = "Listen Live"; btnMain.className = ""; btnMain.disabled = false;
@@ -522,7 +558,6 @@
             const isSender = user.isBroadcasting;
             const leftIcon = isSender ? ICON_MIC : ICON_HEADPHONES;
             const iconClass = isSender ? 'role-icon sender' : 'role-icon';
-            // Status: Sender=Music/Mic. Receiver=MicEnabled (Talking) or Muted.
             const isActive = isSender ? user.isMusicEnabled : user.isMicEnabled; 
             const rightIcon = isActive ? ICON_WAVE : ICON_SLASH;
             const statusClass = isActive ? 'roster-status active' : 'roster-status muted';
