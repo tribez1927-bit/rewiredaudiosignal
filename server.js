@@ -17,7 +17,7 @@ app.get('/', (req, res) => {
 });
 
 // Store connected peers
-[cite_start]// This maintains the "Room Roster" state required by the app [cite: 208, 246]
+// This maintains the "Room Roster" state required by the app
 let rooms = {}; 
 
 wss.on('connection', (ws) => {
@@ -36,7 +36,6 @@ wss.on('connection', (ws) => {
 
             switch (data.type) {
                 case 'join':
-                    [cite_start]// logic matches 'join' message in NwSessionCoordinator [cite: 222]
                     currentUser = {
                         id: data.id,
                         name: data.name,
@@ -53,19 +52,19 @@ wss.on('connection', (ws) => {
 
                     console.log(`👤 ${currentUser.name} joined room: ${data.room}`);
 
-                    [cite_start]// Send full roster update to all in room [cite: 234, 246]
+                    // Send full roster update to all in room
                     broadcastRoster(data.room);
                     break;
 
                 case 'offer':
                 case 'answer':
                 case 'candidate':
-                    [cite_start]// Relay WebRTC signaling between Mac App and JS Receiver [cite: 242, 243, 244, 267]
+                    // Relay WebRTC signaling between Mac App and JS Receiver
                     relayMessage(data);
                     break;
 
                 case 'status-update':
-                    [cite_start]// Update user state for UI meters/icons [cite: 219, 240]
+                    // Update user state for UI meters/icons
                     updateUserStatus(data);
                     break;
             }
@@ -83,7 +82,7 @@ wss.on('connection', (ws) => {
                 if (rooms[currentUser.room].length === 0) {
                     delete rooms[currentUser.room];
                 } else {
-                    [cite_start]broadcastRoster(currentUser.room); // [cite: 238]
+                    broadcastRoster(currentUser.room);
                 }
             }
         }
