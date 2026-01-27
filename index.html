@@ -108,9 +108,9 @@
         .roster-status.muted { color: var(--warn); }
         .roster-status.signal { color: var(--success-light); filter: drop-shadow(0 0 5px var(--success)); transform: scale(1.1); }
 
-        .mini-meters { display: none; gap: 2px; margin-left: 10px; height: 10px; align-items: flex-end; }
+        .mini-meters { display: flex; gap: 2px; height: 14px; align-items: flex-end; }
         .mini-meter-col { width: 4px; height: 100%; background: #333; border-radius: 1px; position: relative; overflow: hidden; }
-        .mini-meter-fill { width: 100%; position: absolute; bottom: 0; background: var(--success); height: 0%; }
+        .mini-meter-fill { width: 100%; position: absolute; bottom: 0; background: var(--success); height: 0%; transition: height 0.05s linear; }
         
         .bitrate { font-family: monospace; font-size: 0.7rem; color: #666; margin-top: 4px; }
         
@@ -135,7 +135,7 @@
             <div class="status-row">
                 <span id="status-dot" class="status-dot"></span>
                 <span id="status-text" class="status-text">DISCONNECTED</span>
-                <div id="mini-meters" class="mini-meters">
+                <div id="mini-meters" class="mini-meters" style="display:none; margin-left: 8px;">
                     <div class="mini-meter-col"><div id="m-l" class="mini-meter-fill"></div></div>
                     <div class="mini-meter-col"><div id="m-r" class="mini-meter-fill"></div></div>
                 </div>
@@ -181,7 +181,7 @@
     let myIPs = new Set(), senderIPs = new Set();
     let nameWasEmpty = false, verificationTimer = null, hasRenamedToMonitor = false;
 
-    const mainTitle = document.getElementById('main-title'); // [cite: 359]
+    const mainTitle = document.getElementById('main-title');
     const logEl = document.getElementById('console');
     const statusText = document.getElementById('status-text');
     const statusDot = document.getElementById('status-dot');
@@ -191,7 +191,6 @@
     const btnTalk = document.getElementById('btn-talk');
 
     const ICON_MIC = `<svg viewBox="0 0 24 24"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/><path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/></svg>`;
-    const ICON_SPEAKER = `<svg viewBox="0 0 24 24"><path d="M14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77zm-4 0h-2.5l-5 5H0v6h2.5l5 5H10V3.23z"/></svg>`;
     const ICON_HEADPHONES = `<svg viewBox="0 0 24 24"><path d="M12 3c-4.97 0-9 4.03-9 9v7c0 1.1.9 2 2 2h4v-8H5v-1c0-3.87 3.13-7 7-7s7 3.13 7 7v1h-4v8h4c1.1 0 2-.9 2-2v-7c0-4.97-4.03-9-9-9z"/></svg>`;
     
     function log(msg, type='info') {
@@ -216,7 +215,6 @@
                     if(verificationTimer) { clearTimeout(verificationTimer); verificationTimer = null; }
                     nameWasEmpty = false;
                     myUserName = "Studio Monitor";
-                    log("⚡️ Same Machine Detected. Renaming to 'Studio Monitor'", "log-fix");
                     renderRoster();
                     if(ws && ws.readyState === 1) {
                          ws.send(JSON.stringify({ type: 'join', room: currentRoomName, name: myUserName, id: myId, role: 'receiver', isBroadcasting: false }));
@@ -265,12 +263,8 @@
             currentRoomName = document.getElementById('room').value || "studio1";
             let inputUser = document.getElementById('user').value.trim();
             nameWasEmpty = (inputUser === "");
-            if (nameWasEmpty) {
-                inputUser = "Verifying Identity...";
-                log("⚠️ Name Empty. Verifying Local Machine...", "warn");
-            }
+            if (nameWasEmpty) { inputUser = "Verifying Identity..."; }
             myUserName = inputUser;
-            document.getElementById('roster-title').innerText = currentRoomName;
             setUIState('connecting');
 
             try {
@@ -279,16 +273,13 @@
                 audioEl.srcObject = null;
                 audioEl.muted = false;
                 audioEl.play().catch(()=>{});
-                log("🎙 Requesting Mic...", "mic");
                 try {
                     localVoiceStream = await navigator.mediaDevices.getUserMedia({
                         audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
                     });
                     localVoiceStream.getAudioTracks().forEach(t => t.enabled = false);
-                    log("🎙 Mic Ready (Muted)", "mic");
                     monitorAndRouteAudio(localVoiceStream, "Local Mic", myId);
                 } catch(e) {
-                    log("🚫 Mic Failed: " + e.message, "err");
                     localVoiceStream = null;
                 }
                 
@@ -296,14 +287,12 @@
                     verificationTimer = setTimeout(() => {
                          if (nameWasEmpty && !hasRenamedToMonitor) {
                             disconnectAll();
-                            log("🚫 Access Denied: Name Required", "log-err");
-                            alert("Name Required for Remote Connections.\n\nPlease enter your name to listen.");
+                            alert("Name Required for Remote Connections.");
                         }
                     }, 4000);
                 }
                 connectSignaling(currentRoomName, myUserName);
             } catch(e) {
-                log("Setup Failed: " + e.message, "err");
                 setUIState('disconnected');
             }
         } else {
@@ -333,7 +322,6 @@
 
     btnTalk.addEventListener('click', () => {
         if (needsRepair) {
-            log("[FIX] 🔧 Repairing...", "log-fix");
             for(let id in voicePeerConnections) {
                 const session = voicePeerConnections[id];
                 if (session.pc.connectionState === 'failed' || session.pc.connectionState === 'disconnected') {
@@ -348,10 +336,9 @@
             updateButtons();
             return;
         }
-        if (!localVoiceStream) return log("No Mic Available", "err");
+        if (!localVoiceStream) return;
         isTalking = !isTalking;
         localVoiceStream.getAudioTracks().forEach(t => t.enabled = isTalking);
-        log(isTalking ? "🎙 Mic LIVE" : "🎙 Mic Muted", "mic");
         updateButtons();
         broadcastStatus();
     });
@@ -360,11 +347,9 @@
         btnMute.className = isMuted ? "" : "active";
         document.getElementById('icon-vol').style.display = isMuted ? "none" : "block";
         document.getElementById('icon-mute').style.display = isMuted ? "block" : "none";
-        
         const talkIconOff = document.getElementById('icon-talk-off');
         const talkIconOn = document.getElementById('icon-talk-on');
         const talkIconFix = document.getElementById('icon-repair');
-
         if (needsRepair) {
             btnTalk.className = "repair";
             talkIconOff.style.display = "none";
@@ -381,7 +366,6 @@
     function connectSignaling(room, user) {
         ws = new WebSocket(WS_URL);
         ws.onopen = () => {
-            log("WS Connected", "net");
             ws.send(JSON.stringify({ type: 'join', room, name: user, id: myId, role: 'receiver', isBroadcasting: false }));
         };
         ws.onmessage = e => {
@@ -393,11 +377,7 @@
             else handleVoiceMsg(msg);
         };
         ws.onclose = () => {
-            if (studioPC && (studioPC.connectionState === 'connected' || studioPC.connectionState === 'completed')) {
-                log("⚠️ Signal Lost (Audio Persisting)", "warn");
-            } else {
-                setUIState('disconnected');
-            }
+            setUIState('disconnected');
         };
     }
 
@@ -407,7 +387,6 @@
             pc.addTransceiver('audio', { direction: 'sendrecv' });
             if(localVoiceStream) localVoiceStream.getTracks().forEach(t => pc.addTrack(t, localVoiceStream));
             pc.ontrack = e => {
-                log(`🗣 [VOICE] Audio from ${getName(peerId)}`, "info");
                 monitorAndRouteAudio(e.streams[0], `Rx ${peerId.substring(0,4)}`, peerId);
                 const aud = document.createElement('audio');
                 aud.srcObject = e.streams[0];
@@ -417,18 +396,12 @@
             };
             pc.onicecandidate = e => {
                 if(e.candidate) {
-                    const parts = e.candidate.candidate.split(' ');
-                    if(parts.length > 4) {
-                        const ip = parts[4];
-                        if(!ip.includes(':') && parts[7] === 'host') { myIPs.add(ip); checkIPMatch(); }
-                    }
                     ws.send(JSON.stringify({ type: 'candidate', ...e.candidate.toJSON(), id: myId, targetId: peerId }));
                 }
             };
             pc.oniceconnectionstatechange = () => {
-                const state = pc.iceConnectionState;
-                if (state === 'failed' || state === 'disconnected') { needsRepair = true; updateButtons(); }
-                updateRosterStatus(peerId, state);
+                if (pc.iceConnectionState === 'failed' || pc.iceConnectionState === 'disconnected') { needsRepair = true; updateButtons(); }
+                updateRosterStatus(peerId, pc.iceConnectionState);
             };
             voicePeerConnections[peerId] = { pc: pc, candidates: [] };
         }
@@ -456,7 +429,7 @@
                  if(pc.remoteDescription) pc.addIceCandidate(msg);
                  else session.candidates.push(msg);
             }
-        } catch(e) { log(e.message, "err"); }
+        } catch(e) {}
     }
 
     let currentRoster = [];
@@ -488,17 +461,19 @@
         currentRoster.forEach(u => {
             const isMe = u.id === myId;
             const isSender = u.isBroadcasting;
-            let displayName = u.name;
-            if (isMe) { displayName = myUserName + " (You)"; }
+            let displayName = isMe ? myUserName + " (You)" : u.name;
 
-            let roleClass = '';
-            let roleIconStr = '';
+            // Updated Role Icon Area: Meters for sender row ONLY[cite: 342, 512].
+            let leftArea = '';
             if (isSender) {
-                roleClass = 'sender';
-                roleIconStr = ICON_SPEAKER;
+                leftArea = `
+                    <div class="mini-meters" style="width:18px;">
+                        <div class="mini-meter-col"><div id="ml-${u.id}" class="mini-meter-fill"></div></div>
+                        <div class="mini-meter-col"><div id="mr-${u.id}" class="mini-meter-fill"></div></div>
+                    </div>`;
             } else {
-                roleClass = (u.isMusicEnabled !== false) ? 'recv-unmuted' : 'recv-muted';
-                roleIconStr = ICON_HEADPHONES;
+                const muteClass = (u.isMusicEnabled !== false) ? 'recv-unmuted' : 'recv-muted';
+                leftArea = `<div class="role-icon ${muteClass}">${ICON_HEADPHONES}</div>`;
             }
 
             const isActive = isSender ? u.isMusicEnabled : (u.isMicEnabled !== false);
@@ -508,16 +483,10 @@
             el.className = 'roster-item';
             el.innerHTML = `
                 <div class="roster-left">
-                    <div class="role-icon ${roleClass}">${roleIconStr}</div>
+                    ${leftArea}
                     <span class="roster-name">${displayName}</span>
                 </div>
-                <div class="mini-meters" style="display: flex; gap: 8px; align-items: center;">
-                    <div id="status-icon-${u.id}" class="roster-status ${statusClass}">${ICON_MIC}</div>
-                    <div class="mini-meters" style="display: flex;">
-                        <div class="mini-meter-col"><div id="ml-${u.id}" class="mini-meter-fill"></div></div>
-                        <div class="mini-meter-col"><div id="mr-${u.id}" class="mini-meter-fill"></div></div>
-                    </div>
-                </div>
+                <div id="status-icon-${u.id}" class="roster-status ${statusClass}">${ICON_MIC}</div>
             `;
             list.appendChild(el);
         });
@@ -530,7 +499,6 @@
             if(studioPC) studioPC.close();
             studioPC = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }] });
             studioPC.ontrack = e => {
-                log("🎵 [STUDIO] Stream Active", "success");
                 audioEl.srcObject = e.streams[0];
                 startVisuals(e.streams[0]);
                 startStats(studioPC);
@@ -543,8 +511,8 @@
                 }
             };
             studioPC.onconnectionstatechange = () => {
-                if(studioPC.connectionState === 'connected') { log("🎵 [STUDIO] Connected", "success"); setUIState('connected'); }
-                else if (['disconnected', 'failed', 'closed'].includes(studioPC.connectionState)) { log("🎵 [STUDIO] Stream Ended", "err"); setUIState('disconnected'); }
+                if(studioPC.connectionState === 'connected') { setUIState('connected'); }
+                else if (['disconnected', 'failed', 'closed'].includes(studioPC.connectionState)) { setUIState('disconnected'); }
             };
             await studioPC.setRemoteDescription(new RTCSessionDescription({ type: 'offer', sdp: msg.sdp }));
             const answer = await studioPC.createAnswer();
@@ -602,20 +570,17 @@
     }
     function setUIState(s) {
         const p=document.getElementById('setup-panel'), m=document.getElementById('mini-meters'), r=document.getElementById('roster-panel'), ti=document.getElementById('btn-talk');
-        
         if(s==='connecting') { 
             btnMain.innerText="Connecting..."; btnMain.disabled=true; p.style.opacity="0.5"; 
         }
         else if (s==='connected') {
             isConnected=true;
-            // FIXED: Set header to user's name 
             mainTitle.innerText = myUserName.toUpperCase(); 
             btnMain.innerText="Disconnect"; btnMain.className="disconnect";
             btnMain.disabled=false; statusText.innerText="LIVE AUDIO"; statusDot.className="status-dot on"; p.style.display="none"; m.style.display="flex"; r.style.display="flex"; if(localVoiceStream) ti.style.display="flex"; btnMute.style.display="flex"; broadcastStatus();
         }
         else { 
             isConnected=false; 
-            // FIXED: Reset title to default 
             mainTitle.innerText = "STUDIO RECEIVER";
             btnMain.innerText="Listen Live"; btnMain.className=""; btnMain.disabled=false; statusText.innerText="DISCONNECTED"; statusDot.className="status-dot"; p.style.display="flex"; p.style.opacity="1"; m.style.display="none";
             r.style.display="none"; ti.style.display="none"; btnMute.style.display="none"; 
