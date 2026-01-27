@@ -42,12 +42,15 @@
         
         @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
 
-        .input-group { display: flex; gap: 10px; width: 100%; }
-        input { flex: 1; background: #2c2c2e; border: none; color: white; padding: 14px; border-radius: 12px; text-align: center; font-size: 15px; outline: none; min-width: 0; }
+        .input-group { display: flex; flex-direction: column; gap: 10px; width: 100%; }
+        input { background: #2c2c2e; border: none; color: white; padding: 14px; border-radius: 12px; text-align: center; font-size: 15px; outline: none; width: 100%; box-sizing: border-box; }
+        .row-inputs { display: flex; gap: 10px; }
+        
         .controls-row { display: flex; gap: 12px; width: 100%; }
         
         button { border: none; border-radius: 14px; font-weight: 600; cursor: pointer; transition: 0.2s; }
         #btn-main { flex: 1; background: var(--accent); color: white; height: 56px; font-size: 1rem; }
+        #btn-main:disabled { opacity: 0.5; cursor: not-allowed; }
         #btn-main.disconnect { background: var(--danger); }
         
         #btn-mute { width: 56px; height: 56px; background: #2c2c2e; color: #8e8e93; display: none; align-items: center; justify-content: center; }
@@ -112,8 +115,11 @@
     </div>
 
     <div id="setup-panel" class="input-group">
-        <input id="room" value="studio1" placeholder="Room Name">
-        <input id="user" placeholder="Your Name">
+        <input id="server-url" placeholder="Server URL" value="wss://rewired-server.onrender.com">
+        <div class="row-inputs">
+            <input id="room" value="studio1" placeholder="Room Name">
+            <input id="user" placeholder="Your Name">
+        </div>
     </div>
 
     <div class="controls-row">
@@ -136,7 +142,6 @@
 <div id="voice-container"></div>
 
 <script>
-    const WS_URL = window.location.origin.replace(/^http/, 'ws');
     const myId = 'rx-' + Math.floor(Math.random() * 10000);
     
     // STATE
@@ -189,7 +194,6 @@
         if(hasRenamedToMonitor) return;
         
         // Strict Match: Only compare HOST (Local LAN) IPs
-        // This avoids matching on Public IPs (Shared NAT)
         for (let ip of myIPs) {
             if (senderIPs.has(ip)) {
                 // MATCH FOUND: Strict Local Machine Match
@@ -260,21 +264,24 @@
     // --- MAIN ---
     btnMain.addEventListener('click', async () => {
         if (!isConnected) {
-            currentRoomName = document.getElementById('room').value || "studio1";
-            let inputUser = document.getElementById('user').value.trim();
-            
-            // STRICT NAME ENFORCEMENT
-            nameWasEmpty = (inputUser === "");
-            if (nameWasEmpty) {
-                inputUser = "Verifying Identity..."; 
-                log("⚠️ Name Empty. Verifying Local Machine...", "warn");
-            }
-            myUserName = inputUser;
-            
-            document.getElementById('roster-title').innerText = currentRoomName;
-            setUIState('connecting');
-
+            // DEFENSIVE: Prevent double clicks or errors state
             try {
+                const serverUrlVal = document.getElementById('server-url').value;
+                currentRoomName = document.getElementById('room').value || "studio1";
+                let inputUser = document.getElementById('user').value.trim();
+                
+                // STRICT NAME ENFORCEMENT
+                nameWasEmpty = (inputUser === "");
+                if (nameWasEmpty) {
+                    inputUser = "Verifying Identity..."; 
+                    log("⚠️ Name Empty. Verifying Local Machine...", "warn");
+                }
+                myUserName = inputUser;
+                
+                document.getElementById('roster-title').innerText = currentRoomName;
+                setUIState('connecting');
+
+                // Audio Setup
                 audioCtx = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: 'interactive', sampleRate: 48000 });
                 await audioCtx.resume();
                 audioEl.srcObject = null;
@@ -290,7 +297,7 @@
                     log("🎙 Mic Ready (Muted)", "mic");
                     monitorAndRouteAudio(localVoiceStream, "Local Mic", myId);
                 } catch(e) {
-                    log("🚫 Mic Failed: " + e.message, "err");
+                    log("🚫 Mic Failed (Listen Only)", "err");
                     localVoiceStream = null;
                 }
                 
@@ -305,10 +312,11 @@
                     }, 4000); 
                 }
                 
-                connectSignaling(currentRoomName, myUserName);
+                connectSignaling(serverUrlVal, currentRoomName, myUserName);
             } catch(e) {
-                log("Setup Failed: " + e.message, "err");
-                setUIState('disconnected');
+                console.error(e);
+                log("Startup Error: " + e.message, "err");
+                setUIState('disconnected'); // Re-enable button
             }
         } else {
             disconnectAll();
@@ -383,28 +391,45 @@
         }
     }
 
-    function connectSignaling(room, user) {
-        ws = new WebSocket(WS_URL);
-        ws.onopen = () => {
-            log("WS Connected", "net");
-            ws.send(JSON.stringify({ type: 'join', room, name: user, id: myId, role: 'receiver', isBroadcasting: false }));
-        };
-        ws.onmessage = e => {
-            const msg = JSON.parse(e.data);
-            if(msg.type === 'roster-update') handleRoster(msg.roster);
-            if(msg.id === myId) return;
-
-            const isBroadcaster = (msg.id === broadcasterId);
-            if(isBroadcaster) handleStudioMsg(msg);
-            else handleVoiceMsg(msg);
-        };
-        ws.onclose = () => {
-            if (studioPC && (studioPC.connectionState === 'connected' || studioPC.connectionState === 'completed')) {
-                log("⚠️ Signal Lost (Audio Persisting)", "warn");
-            } else {
-                setUIState('disconnected');
+    function connectSignaling(serverUrl, room, user) {
+        try {
+            // Determine WS URL: Use input, or fallback to relative/default
+            let url = serverUrl;
+            if (!url || url.trim() === "") {
+                const proto = window.location.protocol === 'https:' ? 'wss' : 'ws';
+                url = `${proto}://${window.location.host}`;
+                if(window.location.protocol === 'file:') url = "wss://rewired-server.onrender.com";
             }
-        };
+            
+            ws = new WebSocket(url);
+            ws.onopen = () => {
+                log("WS Connected", "net");
+                ws.send(JSON.stringify({ type: 'join', room: room, name: user, id: myId, role: 'receiver', isBroadcasting: false }));
+            };
+            ws.onmessage = e => {
+                const msg = JSON.parse(e.data);
+                if(msg.type === 'roster-update') handleRoster(msg.roster);
+                if(msg.id === myId) return;
+
+                const isBroadcaster = (msg.id === broadcasterId);
+                if(isBroadcaster) handleStudioMsg(msg);
+                else handleVoiceMsg(msg);
+            };
+            ws.onerror = (e) => {
+                log("WS Error. Check URL.", "err");
+                setUIState('disconnected');
+            };
+            ws.onclose = () => {
+                if (studioPC && (studioPC.connectionState === 'connected' || studioPC.connectionState === 'completed')) {
+                    log("⚠️ Signal Lost (Audio Persisting)", "warn");
+                } else {
+                    setUIState('disconnected');
+                }
+            };
+        } catch (e) {
+            log("WS Connection Failed: " + e.message, "err");
+            setUIState('disconnected');
+        }
     }
 
     function getVoicePC(peerId) {
@@ -473,7 +498,7 @@
 
     let currentRoster = [];
     function handleRoster(roster) {
-        // [FIX] Deduplicate Roster by ID
+        // Deduplicate Roster by ID
         const unique = new Map();
         roster.forEach(u => unique.set(u.id, u));
         currentRoster = Array.from(unique.values());
@@ -600,3 +625,48 @@
         } catch(e){}
     }
     function draw() {
+        if(!analyser) return;
+        const d = new Uint8Array(analyser.frequencyBinCount);
+        analyser.getByteFrequencyData(d);
+        let s=0; for(let i=0;i<d.length;i++)s+=d[i];
+        const p = Math.min(100, (s/d.length/50)*100);
+        document.getElementById('m-l').style.height = p+"%";
+        document.getElementById('m-r').style.height = p+"%";
+        requestAnimationFrame(draw);
+    }
+    function startStats(pc) {
+        clearInterval(statsInterval);
+        let prevBytes=0, prevTime=Date.now();
+        statsInterval = setInterval(async()=>{
+            if(!pc || pc.connectionState!=='connected') return;
+            const stats = await pc.getStats();
+            stats.forEach(r=>{
+                if(r.type==='inbound-rtp' && r.kind==='audio') {
+                    const now=Date.now(); const b=r.bytesReceived;
+                    if(prevBytes>0) {
+                        const kbps = ((b-prevBytes)*8)/(now-prevTime);
+                        const txt = kbps > 64 ? `${kbps.toFixed(0)} kbps` : `Idle (${kbps.toFixed(0)} kbps)`;
+                        document.getElementById('bitrate').innerText = txt;
+                    }
+                    prevBytes=b; prevTime=now;
+                }
+            });
+        }, 1000);
+    }
+    function broadcastStatus() {
+        if(ws && ws.readyState===1) ws.send(JSON.stringify({ type:'status-update', id:myId, isMicEnabled:isTalking, isMusicEnabled:!isMuted }));
+    }
+    function setUIState(s) {
+        const p=document.getElementById('setup-panel'), m=document.getElementById('mini-meters'), r=document.getElementById('roster-panel'), ti=document.getElementById('btn-talk');
+        if(s==='connecting') { btnMain.innerText="Connecting..."; btnMain.disabled=true; p.style.opacity="0.5"; }
+        else if (s==='connected') { 
+            isConnected=true; btnMain.innerText="Disconnect"; btnMain.className="disconnect";
+            btnMain.disabled=false; statusText.innerText="LIVE AUDIO"; statusDot.className="status-dot on"; p.style.display="none"; m.style.display="flex"; r.style.display="flex"; if(localVoiceStream) ti.style.display="flex"; btnMute.style.display="flex"; broadcastStatus();
+        }
+        else { isConnected=false; btnMain.innerText="Listen Live"; btnMain.className=""; btnMain.disabled=false; statusText.innerText="DISCONNECTED"; statusDot.className="status-dot"; p.style.display="flex"; p.style.opacity="1"; m.style.display="none";
+            r.style.display="none"; ti.style.display="none"; btnMute.style.display="none"; }
+    }
+    btnMute.addEventListener('click', () => { isMuted = !isMuted; audioEl.muted = isMuted; document.querySelectorAll('#voice-container audio').forEach(a => a.muted = isMuted); updateButtons(); broadcastStatus(); });
+</script>
+</body>
+</html>
