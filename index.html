@@ -8,9 +8,9 @@
         :root {
             --bg: #000000; --card: #1c1c1e; --accent: #0a84ff;
             --text: #f2f2f7; --danger: #ff453a;
-            --success: #32d74b; /* Green */
-            --success-light: #66ff7f; /* Bright Green (Signal) */
-            --warn: #ff9f0a; /* Orange (Muted) */
+            --success: #32d74b;
+            --success-light: #66ff7f;
+            --warn: #ff9f0a;
             --ice: #bd53ed; --sig: #8e8e93; --vol: #00ffcc;
         }
         body {
@@ -23,8 +23,6 @@
             width: 100%; max-width: 380px; display: flex; flex-direction: column; gap: 24px;
             box-shadow: 0 10px 30px rgba(0,0,0,0.5); position: relative;
         }
-        
-        /* HEADER */
         .header { text-align: center; border-bottom: 1px solid #333; padding-bottom: 15px; position: relative; }
         h1 { margin: 0; font-size: 0.9rem; font-weight: 700; text-transform: uppercase; color: #8e8e93; margin-bottom: 8px; }
         .status-row { display: flex; align-items: center; justify-content: center; height: 16px; }
@@ -32,7 +30,6 @@
         .status-dot.on { background: var(--success); box-shadow: 0 0 8px var(--success); }
         .status-text { font-size: 0.75rem; font-weight: 600; letter-spacing: 0.5px; }
         
-        /* TALK BUTTON */
         #btn-talk {
             position: absolute; right: 0; top: 0; width: 32px; height: 32px;
             background: #2c2c2e; border-radius: 50%; border: 1px solid #333;
@@ -45,7 +42,6 @@
         
         @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
 
-        /* INPUTS & CONTROLS */
         .input-group { display: flex; gap: 10px; width: 100%; }
         input { flex: 1; background: #2c2c2e; border: none; color: white; padding: 14px; border-radius: 12px; text-align: center; font-size: 15px; outline: none; min-width: 0; }
         .controls-row { display: flex; gap: 12px; width: 100%; }
@@ -54,38 +50,30 @@
         #btn-main { flex: 1; background: var(--accent); color: white; height: 56px; font-size: 1rem; }
         #btn-main.disconnect { background: var(--danger); }
         
-        /* MUTE BUTTON */
         #btn-mute { width: 56px; height: 56px; background: #2c2c2e; color: #8e8e93; display: none; align-items: center; justify-content: center; }
         #btn-mute.active { background: var(--accent); color: white; }
         #btn-mute svg { width: 24px; height: 24px; fill: currentColor; }
 
-        /* ROSTER STYLES */
         #roster-panel { display: none; flex-direction: column; gap: 8px; border-top: 1px solid #333; padding-top: 15px; }
         .roster-header { font-size: 0.9rem; color: #8e8e93; font-weight: 700; text-align: center; margin-bottom: 8px; }
         .roster-item { display: flex; align-items: center; justify-content: space-between; background: #252527; padding: 10px 12px; border-radius: 10px; }
-        .roster-left { display: flex; align-items: center; gap: 10px; } /* Gap logic preserved for Icon + Name */
+        .roster-left { display: flex; align-items: center; gap: 10px; }
         
-        /* --- ROLE ICONS --- */
         .role-icon { width: 18px; height: 18px; color: #555; transition: color 0.3s ease; display: flex; align-items: center; }
         .role-icon svg { width: 100%; height: 100%; fill: currentColor; }
-        
-        .role-icon.sender { color: var(--accent); } /* Blue */
-        .role-icon.recv-unmuted { color: var(--success); } /* Green */
-        .role-icon.recv-muted { color: var(--warn); } /* Orange */
+        .role-icon.sender { color: var(--accent); }
+        .role-icon.recv-unmuted { color: var(--success); }
+        .role-icon.recv-muted { color: var(--warn); }
         .role-icon.connecting { color: var(--warn); animation: pulse 1s infinite; }
         .role-icon.failed { color: var(--danger); }
 
         .roster-name { font-size: 0.9rem; font-weight: 500; color: #eee; }
-        
-        /* --- RIGHT STATUS ICON (MIC) --- */
         .roster-status { width: 16px; height: 16px; transition: color 0.15s ease-out; display: flex; align-items: center; }
         .roster-status svg { width: 100%; height: 100%; fill: currentColor; }
-        
         .roster-status.muted { color: var(--warn); }
         .roster-status.unmuted { color: var(--success); }
         .roster-status.signal { color: var(--success-light); filter: drop-shadow(0 0 5px var(--success)); transform: scale(1.1); }
 
-        /* METERS & LOGS */
         .mini-meters { display: none; gap: 2px; margin-left: 10px; height: 10px; align-items: flex-end; }
         .mini-meter-col { width: 4px; height: 100%; background: #333; border-radius: 1px; position: relative; overflow: hidden; }
         .mini-meter-fill { width: 100%; position: absolute; bottom: 0; background: var(--success); height: 0%; }
@@ -94,7 +82,7 @@
         #console { height: 150px; background: #000; border-radius: 8px; border: 1px solid #333; padding: 10px; font-family: monospace; font-size: 9px; color: #636366; overflow-y: auto; width: 100%; box-sizing: border-box; }
         .log-err { color: var(--danger); } .log-mic { color: #d63aff; } .log-ice { color: var(--ice); } .log-sig { color: var(--sig); } .log-vol { color: var(--vol); } 
         .log-fix { color: var(--success); font-weight: bold; }
-        .log-success { color: var(--success); } /* Pro Mode Success */
+        .log-success { color: var(--success); }
     </style>
 </head>
 <body>
@@ -208,13 +196,16 @@
                 if (rosterId) {
                     const statusIcon = document.getElementById(`status-icon-${rosterId}`);
                     if (statusIcon) {
-                        // > 25 (approx -20dB) = Signal
                         if (avg > 25) statusIcon.classList.add('signal');
                         else statusIcon.classList.remove('signal');
                     }
                 }
                 
-                if (avg > 25 && Math.random()>0.98) log(`[VOL] ${label}: ${avg.toFixed(0)}`, "vol");
+                // [NEW] Differentiate logging tag based on label
+                if (avg > 25 && Math.random()>0.98) {
+                    const tag = label.includes("Mic") ? "[MIC]" : "[VOICE]";
+                    log(`${tag} ${label}: ${avg.toFixed(0)}`, "vol");
+                }
             }, 100);
         } catch(e) { log(`Route Error: ${e.message}`, "err"); }
     }
@@ -355,7 +346,8 @@
             pc.addTransceiver('audio', { direction: 'sendrecv' });
             if(localVoiceStream) localVoiceStream.getTracks().forEach(t => pc.addTrack(t, localVoiceStream));
             pc.ontrack = e => {
-                log(`🗣 Audio from ${peerId.substring(0,4)}`, "info");
+                // [NEW] Voice Channel Log
+                log(`🗣 [VOICE] Audio from ${peerId.substring(0,4)}`, "info");
                 monitorAndRouteAudio(e.streams[0], `Rx ${peerId.substring(0,4)}`, peerId);
                 const aud = document.createElement('audio');
                 aud.srcObject = e.streams[0];
@@ -372,8 +364,9 @@
             };
             pc.oniceconnectionstatechange = () => {
                 const state = pc.iceConnectionState;
-                if (state === 'failed') log(`[ICE] Failed ${peerId.substring(0,4)}`, "err");
-                if (state === 'connected') log(`[ICE] Connected ${peerId.substring(0,4)}`, "success");
+                // [NEW] Voice Channel Log
+                if (state === 'failed') log(`🗣 [VOICE] Failed ${peerId.substring(0,4)}`, "err");
+                if (state === 'connected') log(`🗣 [VOICE] Connected ${peerId.substring(0,4)}`, "net");
                 
                 if (state === 'failed' || state === 'disconnected') { needsRepair = true; updateButtons(); }
                 updateRosterStatus(peerId, state);
@@ -440,16 +433,14 @@
             const isMe = u.id === myId;
             const isSender = u.isBroadcasting;
             
-            // 2. MIDDLE ICONS (Col 1 Removed per request)
             let roleIcon = '';
             if (isSender) {
-                roleIcon = `<div class="role-icon sender">${ICON_MIC}</div>`; // Blue Mic
+                roleIcon = `<div class="role-icon sender">${ICON_MIC}</div>`;
             } else {
                 const muteClass = (u.isMicEnabled !== false && u.isMusicEnabled !== false) ? 'recv-unmuted' : 'recv-muted';
                 roleIcon = `<div class="role-icon ${muteClass}">${ICON_HEADPHONES}</div>`;
             }
 
-            // 3. RIGHT STATUS ICON (MIC)
             const isActive = isSender ? u.isMusicEnabled : (u.isMicEnabled !== false);
             const rightClass = isActive ? 'roster-status unmuted' : 'roster-status muted';
             
@@ -474,14 +465,19 @@
             if(studioPC) studioPC.close();
             studioPC = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }] });
             studioPC.ontrack = e => {
-                log("🎵 Studio Stream Active", "success");
+                // [NEW] Studio Channel Log
+                log("🎵 [STUDIO] Stream Active", "success");
                 audioEl.srcObject = e.streams[0];
                 startVisuals(e.streams[0]);
                 startStats(studioPC);
             };
             studioPC.onconnectionstatechange = () => { 
                 if(studioPC.connectionState === 'connected') {
+                    // [NEW] Studio Channel Log
+                    log("🎵 [STUDIO] Connected", "success");
                     setUIState('connected');
+                } else if (studioPC.connectionState === 'failed') {
+                    log("🎵 [STUDIO] Failed", "err");
                 }
             };
             await studioPC.setRemoteDescription(new RTCSessionDescription({ type: 'offer', sdp: msg.sdp }));
