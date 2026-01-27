@@ -65,23 +65,24 @@
         input { flex: 1; background: #2c2c2e; border: none; color: white; padding: 14px;
             border-radius: 12px; text-align: center; font-size: 15px; outline: none; min-width: 0;
             }
-        .controls-row { display: flex; gap: 12px; width: 100%;
+        .controls-row { display: flex; flex-direction: column; gap: 12px; width: 100%;
             }
+        
+        /* Volume Controls Area */
+        .volume-container { display: none; align-items: center; gap: 12px; background: #2c2c2e; padding: 8px 16px; border-radius: 14px; }
+        #vol-slider { flex: 1; cursor: pointer; accent-color: var(--accent); }
         
         button { border: none;
             border-radius: 14px; font-weight: 600; cursor: pointer; transition: 0.2s; }
         #btn-main { flex: 1;
-            background: var(--accent); color: white; height: 56px; font-size: 1rem; }
+            background: var(--accent); color: white; height: 56px; font-size: 1rem; width: 100%; }
         #btn-main.disconnect { background: var(--danger);
             }
         
-        #btn-mute { width: 56px;
-            height: 56px; background: #2c2c2e; color: #8e8e93; display: none; align-items: center; justify-content: center;
-            }
-        #btn-mute.active { background: var(--accent); color: white;
-            }
-        #btn-mute svg { width: 24px; height: 24px; fill: currentColor;
-            }
+        #btn-mute { width: 44px; height: 44px; background: transparent; color: #8e8e93; display: flex; align-items: center; justify-content: center; }
+        #btn-mute.active { color: var(--accent); }
+        #btn-mute.muted-state { color: var(--danger); }
+        #btn-mute svg { width: 22px; height: 22px; fill: currentColor; }
 
         #roster-panel { display: none; flex-direction: column; gap: 8px; border-top: 1px solid #333;
             padding-top: 15px; }
@@ -106,22 +107,14 @@
         
         .roster-status.unmuted { color: var(--success); }
         .roster-status.muted { color: var(--warn); }
-        .roster-status.signal { color: var(--success-light); filter: drop-shadow(0 0 5px var(--success)); transform: scale(1.1); }
 
         .mini-meters { display: flex; gap: 2px; height: 14px; align-items: flex-end; }
         .mini-meter-col { width: 4px; height: 100%; background: #333; border-radius: 1px; position: relative; overflow: hidden; }
         .mini-meter-fill { width: 100%; position: absolute; bottom: 0; background: var(--success); height: 0%; transition: height 0.05s linear; }
-        
-        /* Fixed column alignment for the sender meters */
         .meter-column-fixed { width: 18px; display: flex; justify-content: center; align-items: center; }
 
         .bitrate { font-family: monospace; font-size: 0.7rem; color: #666; margin-top: 4px; }
-        
         #console { height: 150px; background: #000; border-radius: 8px; border: 1px solid #333; padding: 10px; font-family: monospace; font-size: 9px; color: #636366; overflow-y: auto; width: 100%; box-sizing: border-box; }
-        .log-err { color: var(--danger); } .log-mic { color: #d63aff; } .log-ice { color: var(--ice); } .log-sig { color: var(--sig); } .log-vol { color: var(--vol); }
-        .log-fix { color: var(--success); font-weight: bold; }
-        .log-success { color: var(--success); }
-        .log-warn { color: var(--warn); }
     </style>
 </head>
 <body>
@@ -130,9 +123,9 @@
     <div class="header">
         <h1 id="main-title">STUDIO RECEIVER</h1>
         <div id="btn-talk" class="muted">
-            <svg id="icon-talk-off" viewBox="0 0 24 24"><path d="M19 11h-1.7c0 .74-.16 1.43-.43 2.05l1.23 1.23c.56-.98.9-2.09.9-3.28zm-4.02.17c0-.06.02-.11.02-.17V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/><path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/></svg>
-            <svg id="icon-talk-on" viewBox="0 0 24 24" style="display:none;"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/><path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/></svg>
-            <svg id="icon-repair" viewBox="0 0 24 24" style="display:none;"><path d="M22.7 19l-9.1-9.1c.9-2.3.4-5-1.5-6.9-2-2-5-2.4-7.4-1.3L9 6 6 9 1.6 4.7C.4 7.1.9 10.1 2.9 12.1c1.9 1.9 4.6 2.4 6.9 1.5l9.1 9.1c.4.4 1 .4 1.4 0l2.3-2.3c.5-.4.5-1.1.1-1.4z"/></svg>
+            <svg viewBox="0 0 24 24" id="icon-talk-off"><path d="M19 11h-1.7c0 .74-.16 1.43-.43 2.05l1.23 1.23c.56-.98.9-2.09.9-3.28zm-4.02.17c0-.06.02-.11.02-.17V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/><path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/></svg>
+            <svg viewBox="0 0 24 24" id="icon-talk-on" style="display:none;"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/><path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/></svg>
+            <svg viewBox="0 0 24 24" id="icon-repair" style="display:none;"><path d="M22.7 19l-9.1-9.1c.9-2.3.4-5-1.5-6.9-2-2-5-2.4-7.4-1.3L9 6 6 9 1.6 4.7C.4 7.1.9 10.1 2.9 12.1c1.9 1.9 4.6 2.4 6.9 1.5l9.1 9.1c.4.4 1 .4 1.4 0l2.3-2.3c.5-.4.5-1.1.1-1.4z"/></svg>
         </div>
         <div class="status-container">
             <div class="status-row">
@@ -154,10 +147,13 @@
 
     <div class="controls-row">
         <button id="btn-main">Listen Live</button>
-        <button id="btn-mute" class="active">
-            <svg id="icon-vol" viewBox="0 0 24 24"><path d="M14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77zm-4 0h-2.5l-5 5H0v6h2.5l5 5H10V3.23z"/></svg>
-            <svg id="icon-mute" viewBox="0 0 24 24" style="display:none"><path d="M19 12c0 1.72-1.02 3.22-2.5 4v2.15c2.34-.99 4-3.32 4-6.15 0-2.83-1.66-5.16-4-6.15V8c1.48.78 2.5 2.28 2.5 4zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06c1.38-.31 2.63-.95 3.69-1.81L19.73 21 21 19.73 4.27 3zM12 4L9.91 6.09 12 8.18V4z"/></svg>
-        </button>
+        <div id="vol-panel" class="volume-container">
+            <input type="range" id="vol-slider" min="0" max="1" step="0.01" value="0.8">
+            <button id="btn-mute">
+                <svg id="icon-vol" viewBox="0 0 24 24"><path d="M14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77zm-4 0h-2.5l-5 5H0v6h2.5l5 5H10V3.23z"/></svg>
+                <svg id="icon-mute" viewBox="0 0 24 24" style="display:none"><path d="M19 12c0 1.72-1.02 3.22-2.5 4v2.15c2.34-.99 4-3.32 4-6.15 0-2.83-1.66-5.16-4-6.15V8c1.48.78 2.5 2.28 2.5 4zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06c1.38-.31 2.63-.95 3.69-1.81L19.73 21 21 19.73 4.27 3zM12 4L9.91 6.09 12 8.18V4z"/></svg>
+            </button>
+        </div>
     </div>
 
     <div id="roster-panel">
@@ -167,20 +163,20 @@
     <div id="console"></div>
 </div>
 
-<audio id="audio-tag" autoplay playsinline style="display:none;"></audio>
 <div id="voice-container"></div>
 
 <script>
     const WS_URL = window.location.origin.replace(/^http/, 'ws');
     const myId = 'rx-' + Math.floor(Math.random() * 10000);
     
-    let ws, audioCtx, analyser, studioPC;
+    let ws, audioCtx, analyser, studioPC, masterGain;
     let statsInterval = null;
     const voicePeerConnections = {};
     const initializingPeers = new Set();
     
     let isConnected = false, isMuted = false, isTalking = false, needsRepair = false;
     let localVoiceStream = null, broadcasterId = null, currentRoomName = "", myUserName = "";
+    let lastVolume = 0.8; 
     let myIPs = new Set(), senderIPs = new Set();
     let nameWasEmpty = false, verificationTimer = null, hasRenamedToMonitor = false;
 
@@ -188,10 +184,10 @@
     const logEl = document.getElementById('console');
     const statusText = document.getElementById('status-text');
     const statusDot = document.getElementById('status-dot');
-    const audioEl = document.getElementById('audio-tag');
     const btnMain = document.getElementById('btn-main');
     const btnMute = document.getElementById('btn-mute');
     const btnTalk = document.getElementById('btn-talk');
+    const volSlider = document.getElementById('vol-slider');
 
     const ICON_MIC = `<svg viewBox="0 0 24 24"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/><path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/></svg>`;
     const ICON_HEADPHONES = `<svg viewBox="0 0 24 24"><path d="M12 3c-4.97 0-9 4.03-9 9v7c0 1.1.9 2 2 2h4v-8H5v-1c0-3.87 3.13-7 7-7s7 3.13 7 7v1h-4v8h4c1.1 0 2-.9 2-2v-7c0-4.97-4.03-9-9-9z"/></svg>`;
@@ -202,7 +198,7 @@
         if(type) line.className=`log-${type}`;
         logEl.prepend(line);
     }
-    
+
     function getName(id) {
         if(id === myId) return myUserName;
         const u = currentRoster.find(x => x.id === id);
@@ -229,18 +225,16 @@
     }
 
     function monitorAndRouteAudio(stream, label, rosterId) {
-        if (!audioCtx) return;
+        if (!audioCtx || !masterGain) return;
         try {
             const src = audioCtx.createMediaStreamSource(stream);
-            if (!label.includes("Local")) {
-                const gain = audioCtx.createGain();
-                gain.gain.value = 1.0;
-                src.connect(gain);
-                gain.connect(audioCtx.destination);
-            }
             const analyzer = audioCtx.createAnalyser();
             analyzer.fftSize = 256;
+            
+            // ROUTE: src -> analyzer -> masterGain -> destination
             src.connect(analyzer);
+            analyzer.connect(masterGain);
+
             const data = new Uint8Array(analyzer.frequencyBinCount);
             const timer = setInterval(() => {
                 if(!stream.active) { clearInterval(timer); return; }
@@ -272,10 +266,12 @@
 
             try {
                 audioCtx = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: 'interactive', sampleRate: 48000 });
+                masterGain = audioCtx.createGain();
+                masterGain.gain.value = lastVolume;
+                masterGain.connect(audioCtx.destination);
+                
                 await audioCtx.resume();
-                audioEl.srcObject = null;
-                audioEl.muted = false;
-                audioEl.play().catch(()=>{});
+                
                 try {
                     localVoiceStream = await navigator.mediaDevices.getUserMedia({
                         audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
@@ -345,11 +341,38 @@
         updateButtons();
         broadcastStatus();
     });
+
+    volSlider.addEventListener('input', (e) => {
+        const val = parseFloat(e.target.value);
+        if (!isMuted) {
+            lastVolume = val;
+            if (masterGain) masterGain.gain.setTargetAtTime(val, audioCtx.currentTime, 0.05);
+        } else {
+            // If dragging slider while muted, we update the "recovery" volume
+            lastVolume = val;
+        }
+        updateButtons();
+    });
+
+    btnMute.addEventListener('click', () => {
+        isMuted = !isMuted;
+        if (isMuted) {
+            if (masterGain) masterGain.gain.setTargetAtTime(0, audioCtx.currentTime, 0.05);
+        } else {
+            // Restore to last slider position
+            if (masterGain) masterGain.gain.setTargetAtTime(lastVolume, audioCtx.currentTime, 0.05);
+        }
+        updateButtons();
+        broadcastStatus();
+    });
     
     function updateButtons() {
-        btnMute.className = isMuted ? "" : "active";
-        document.getElementById('icon-vol').style.display = isMuted ? "none" : "block";
-        document.getElementById('icon-mute').style.display = isMuted ? "block" : "none";
+        const isActuallySilent = isMuted || lastVolume === 0;
+        
+        btnMute.className = isActuallySilent ? "muted-state" : "active";
+        document.getElementById('icon-vol').style.display = isActuallySilent ? "none" : "block";
+        document.getElementById('icon-mute').style.display = isActuallySilent ? "block" : "none";
+
         const talkIconOff = document.getElementById('icon-talk-off');
         const talkIconOn = document.getElementById('icon-talk-on');
         const talkIconFix = document.getElementById('icon-repair');
@@ -379,9 +402,7 @@
             if(isBroadcaster) handleStudioMsg(msg);
             else handleVoiceMsg(msg);
         };
-        ws.onclose = () => {
-            setUIState('disconnected');
-        };
+        ws.onclose = () => { setUIState('disconnected'); };
     }
 
     function getVoicePC(peerId) {
@@ -391,11 +412,6 @@
             if(localVoiceStream) localVoiceStream.getTracks().forEach(t => pc.addTrack(t, localVoiceStream));
             pc.ontrack = e => {
                 monitorAndRouteAudio(e.streams[0], `Rx ${peerId.substring(0,4)}`, peerId);
-                const aud = document.createElement('audio');
-                aud.srcObject = e.streams[0];
-                aud.autoplay = true;
-                aud.playsInline = true;
-                document.getElementById('voice-container').appendChild(aud);
             };
             pc.onicecandidate = e => {
                 if(e.candidate) {
@@ -468,7 +484,6 @@
 
             let leftArea = '';
             if (isSender) {
-                // FIXED: Wrapped meters in a column container that center-aligns them with headphones
                 leftArea = `
                     <div class="meter-column-fixed">
                         <div class="mini-meters">
@@ -504,7 +519,6 @@
             if(studioPC) studioPC.close();
             studioPC = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }] });
             studioPC.ontrack = e => {
-                audioEl.srcObject = e.streams[0];
                 startVisuals(e.streams[0]);
                 startStats(studioPC);
             };
@@ -542,6 +556,7 @@
             if (broadcasterId) monitorAndRouteAudio(stream, "Studio Stream", broadcasterId);
         } catch(e){}
     }
+
     function draw() {
         if(!analyser) return;
         const d = new Uint8Array(analyser.frequencyBinCount);
@@ -552,6 +567,7 @@
         document.getElementById('m-r').style.height = p+"%";
         requestAnimationFrame(draw);
     }
+
     function startStats(pc) {
         if(statsInterval) clearInterval(statsInterval);
         let prevBytes=0, prevTime=Date.now();
@@ -570,11 +586,13 @@
             });
         }, 1000);
     }
+
     function broadcastStatus() {
         if(ws && ws.readyState===1) ws.send(JSON.stringify({ type:'status-update', id:myId, isMicEnabled:isTalking, isMusicEnabled:!isMuted }));
     }
+
     function setUIState(s) {
-        const p=document.getElementById('setup-panel'), m=document.getElementById('mini-meters'), r=document.getElementById('roster-panel'), ti=document.getElementById('btn-talk');
+        const p=document.getElementById('setup-panel'), m=document.getElementById('mini-meters'), r=document.getElementById('roster-panel'), ti=document.getElementById('btn-talk'), vp=document.getElementById('vol-panel');
         if(s==='connecting') { 
             btnMain.innerText="Connecting..."; btnMain.disabled=true; p.style.opacity="0.5"; 
         }
@@ -582,16 +600,15 @@
             isConnected=true;
             mainTitle.innerText = myUserName.toUpperCase(); 
             btnMain.innerText="Disconnect"; btnMain.className="disconnect";
-            btnMain.disabled=false; statusText.innerText="LIVE AUDIO"; statusDot.className="status-dot on"; p.style.display="none"; m.style.display="flex"; r.style.display="flex"; if(localVoiceStream) ti.style.display="flex"; btnMute.style.display="flex"; broadcastStatus();
+            btnMain.disabled=false; statusText.innerText="LIVE AUDIO"; statusDot.className="status-dot on"; p.style.display="none"; m.style.display="flex"; r.style.display="flex"; if(localVoiceStream) ti.style.display="flex"; vp.style.display="flex"; broadcastStatus();
         }
         else { 
             isConnected=false; 
             mainTitle.innerText = "STUDIO RECEIVER";
             btnMain.innerText="Listen Live"; btnMain.className=""; btnMain.disabled=false; statusText.innerText="DISCONNECTED"; statusDot.className="status-dot"; p.style.display="flex"; p.style.opacity="1"; m.style.display="none";
-            r.style.display="none"; ti.style.display="none"; btnMute.style.display="none"; 
+            r.style.display="none"; ti.style.display="none"; vp.style.display="none"; 
         }
     }
-    btnMute.addEventListener('click', () => { isMuted = !isMuted; audioEl.muted = isMuted; document.querySelectorAll('#voice-container audio').forEach(a => a.muted = isMuted); updateButtons(); broadcastStatus(); });
 </script>
 </body>
 </html>
