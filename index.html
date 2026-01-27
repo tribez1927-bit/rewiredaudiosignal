@@ -68,6 +68,7 @@
         .controls-row { display: flex; flex-direction: column; gap: 12px; width: 100%;
             }
         
+        /* Volume Controls Area */
         .volume-container { display: none;
             align-items: center; gap: 12px; background: #2c2c2e; padding: 8px 16px; border-radius: 14px;
             }
@@ -133,6 +134,7 @@
         .mini-meter-fill { width: 100%; position: absolute; bottom: 0; background: var(--success);
             height: 0%; transition: height 0.05s linear; }
         
+        /* Fixed column alignment for the sender meters */
         .meter-column-fixed { width: 18px;
             display: flex; justify-content: center; align-items: center; }
 
@@ -254,18 +256,16 @@
         }
     }
 
-    // UPDATED: Studio streams are now recognized and diverted from logging
     function monitorAndRouteAudio(stream, label, rosterId) {
         if (!audioCtx || !masterGain) return;
-        // SILENCE: Do not log or process studio stream levels as "VOICE" logs
-        if (label.includes("Studio")) return; [cite: 541, 542]
-        
         try {
             const src = audioCtx.createMediaStreamSource(stream);
             const analyzer = audioCtx.createAnalyser();
             analyzer.fftSize = 256;
             
+            // ROUTE: src -> analyzer
             src.connect(analyzer);
+            // ROUTE: only non-local audio goes to masterGain (Speaker)
             if (!label.includes("Local")) {
                 analyzer.connect(masterGain);
             }
@@ -287,6 +287,7 @@
                     }
                 }
                 
+                // Restored volume logging
                 if (avg > 25 && Math.random() > 0.98) {
                     const tag = label.includes("Mic") ? "[MIC]" : "[VOICE]";
                     const logLabel = rosterId ? getName(rosterId) : label;
@@ -593,16 +594,16 @@
     async function handleStudioMsg(msg) {
         if(msg.type === 'offer') {
             if(studioPC) studioPC.close();
+            // [FIX] Ensure bundled transport for max efficiency
             studioPC = new RTCPeerConnection({ 
                 iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
-                bundlePolicy: "max-bundle"
+                bundlePolicy: "max-bundle",
+                rtcpMuxPolicy: "require"
             });
             studioPC.ontrack = e => {
-                log("🎵 [STUDIO] Stream Active", "success");
-                startVisuals(e.streams[0]);
+                log("🎵 [STUDIO] Stream Active - Bypassing Voice Logging", "success");
+                startVisuals(e.streams[0], true); 
                 startStats(studioPC);
-                // BYPASS: Direct route to output to avoid browser voice processing 
-                monitorAndRouteAudio(e.streams[0], "Studio Stream", broadcasterId);
             };
             studioPC.onicecandidate = e => {
                 if(e.candidate) {
@@ -630,7 +631,7 @@
             };
             await studioPC.setRemoteDescription(new RTCSessionDescription({ type: 'offer', sdp: msg.sdp }));
             const answer = await studioPC.createAnswer();
-            // OPTIMIZED: High bitrate, stereo forced, and low-latency ptime in answer [cite: 533]
+            // [FIX] Force stereo, high-bitrate, and low packetization time
             answer.sdp = answer.sdp.replace("useinbandfec=1", "useinbandfec=1;stereo=1;sprop-stereo=1;maxaveragebitrate=510000;cbr=1;ptime=10");
             await studioPC.setLocalDescription(answer);
             ws.send(JSON.stringify({ type: 'answer', sdp: answer.sdp, id: myId, targetId: msg.id }));
@@ -648,15 +649,30 @@
         }
     }
 
-    function startVisuals(stream) {
+    function startVisuals(stream, isStudio = false) {
         if (audioCtx.state === 'suspended') audioCtx.resume();
         try {
             const src = audioCtx.createMediaStreamSource(stream.clone());
-            analyser = audioCtx.createAnalyser();
-            analyser.fftSize = 256;
-            src.connect(analyser);
-            draw();
-            // REMOVED: monitorAndRouteAudio call here to prevent double-logging/processing
+            
+            // [FIX] Direct Output Path
+            if (isStudio) {
+                // Route directly to MasterGain for playback
+                src.connect(masterGain);
+                
+                // Route separately to Analyser for the big visualizer
+                analyser = audioCtx.createAnalyser();
+                analyser.fftSize = 256;
+                src.connect(analyser);
+                draw();
+                
+                // DO NOT call monitorAndRouteAudio here to avoid "VOICE" logging loop
+            } else {
+                analyser = audioCtx.createAnalyser();
+                analyser.fftSize = 256;
+                src.connect(analyser);
+                draw();
+                if (broadcasterId) monitorAndRouteAudio(stream, "Studio Stream", broadcasterId);
+            }
         } catch(e){}
     }
 
