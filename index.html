@@ -83,6 +83,7 @@
         .log-err { color: var(--danger); } .log-mic { color: #d63aff; } .log-ice { color: var(--ice); } .log-sig { color: var(--sig); } .log-vol { color: var(--vol); } 
         .log-fix { color: var(--success); font-weight: bold; }
         .log-success { color: var(--success); }
+        .log-warn { color: var(--warn); }
     </style>
 </head>
 <body>
@@ -201,7 +202,6 @@
                     }
                 }
                 
-                // [NEW] Differentiate logging tag based on label
                 if (avg > 25 && Math.random()>0.98) {
                     const tag = label.includes("Mic") ? "[MIC]" : "[VOICE]";
                     log(`${tag} ${label}: ${avg.toFixed(0)}`, "vol");
@@ -331,7 +331,17 @@
             if(isBroadcaster) handleStudioMsg(msg);
             else handleVoiceMsg(msg);
         };
-        ws.onclose = () => setUIState('disconnected');
+        
+        // [UPDATED] Connection State Logic
+        ws.onclose = () => {
+            // Only disconnect UI if Studio Audio is ALSO down
+            if (studioPC && (studioPC.connectionState === 'connected' || studioPC.connectionState === 'completed')) {
+                log("⚠️ Signal Lost (Audio Persisting)", "warn");
+                // We purposefully do NOT call setUIState('disconnected') here
+            } else {
+                setUIState('disconnected');
+            }
+        };
     }
 
     // --- VOICE MESH ---
@@ -346,7 +356,6 @@
             pc.addTransceiver('audio', { direction: 'sendrecv' });
             if(localVoiceStream) localVoiceStream.getTracks().forEach(t => pc.addTrack(t, localVoiceStream));
             pc.ontrack = e => {
-                // [NEW] Voice Channel Log
                 log(`🗣 [VOICE] Audio from ${peerId.substring(0,4)}`, "info");
                 monitorAndRouteAudio(e.streams[0], `Rx ${peerId.substring(0,4)}`, peerId);
                 const aud = document.createElement('audio');
@@ -364,7 +373,6 @@
             };
             pc.oniceconnectionstatechange = () => {
                 const state = pc.iceConnectionState;
-                // [NEW] Voice Channel Log
                 if (state === 'failed') log(`🗣 [VOICE] Failed ${peerId.substring(0,4)}`, "err");
                 if (state === 'connected') log(`🗣 [VOICE] Connected ${peerId.substring(0,4)}`, "net");
                 
@@ -465,19 +473,19 @@
             if(studioPC) studioPC.close();
             studioPC = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }] });
             studioPC.ontrack = e => {
-                // [NEW] Studio Channel Log
                 log("🎵 [STUDIO] Stream Active", "success");
                 audioEl.srcObject = e.streams[0];
                 startVisuals(e.streams[0]);
                 startStats(studioPC);
             };
+            // [UPDATED] Connection State Logic
             studioPC.onconnectionstatechange = () => { 
                 if(studioPC.connectionState === 'connected') {
-                    // [NEW] Studio Channel Log
                     log("🎵 [STUDIO] Connected", "success");
                     setUIState('connected');
-                } else if (studioPC.connectionState === 'failed') {
-                    log("🎵 [STUDIO] Failed", "err");
+                } else if (['disconnected', 'failed', 'closed'].includes(studioPC.connectionState)) {
+                    log("🎵 [STUDIO] Stream Ended", "err");
+                    setUIState('disconnected');
                 }
             };
             await studioPC.setRemoteDescription(new RTCSessionDescription({ type: 'offer', sdp: msg.sdp }));
