@@ -332,12 +332,10 @@
             else handleVoiceMsg(msg);
         };
         
-        // [UPDATED] Connection State Logic
         ws.onclose = () => {
             // Only disconnect UI if Studio Audio is ALSO down
             if (studioPC && (studioPC.connectionState === 'connected' || studioPC.connectionState === 'completed')) {
                 log("⚠️ Signal Lost (Audio Persisting)", "warn");
-                // We purposefully do NOT call setUIState('disconnected') here
             } else {
                 setUIState('disconnected');
             }
@@ -441,14 +439,17 @@
             const isMe = u.id === myId;
             const isSender = u.isBroadcasting;
             
+            // [FIXED] Left Icon Logic: Headphone color depends ONLY on u.isMusicEnabled (Listening state)
             let roleIcon = '';
             if (isSender) {
                 roleIcon = `<div class="role-icon sender">${ICON_MIC}</div>`;
             } else {
-                const muteClass = (u.isMicEnabled !== false && u.isMusicEnabled !== false) ? 'recv-unmuted' : 'recv-muted';
+                // Decoupled from isMicEnabled
+                const muteClass = (u.isMusicEnabled !== false) ? 'recv-unmuted' : 'recv-muted';
                 roleIcon = `<div class="role-icon ${muteClass}">${ICON_HEADPHONES}</div>`;
             }
 
+            // Right Icon Logic: Mic Icon depends ONLY on u.isMicEnabled (Talkback state)
             const isActive = isSender ? u.isMusicEnabled : (u.isMicEnabled !== false);
             const rightClass = isActive ? 'roster-status unmuted' : 'roster-status muted';
             
@@ -478,7 +479,6 @@
                 startVisuals(e.streams[0]);
                 startStats(studioPC);
             };
-            // [UPDATED] Connection State Logic
             studioPC.onconnectionstatechange = () => { 
                 if(studioPC.connectionState === 'connected') {
                     log("🎵 [STUDIO] Connected", "success");
