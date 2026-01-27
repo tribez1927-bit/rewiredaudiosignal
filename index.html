@@ -150,6 +150,8 @@
     let broadcasterId = null;
     let currentRoomName = "";
     let myUserName = "";
+    
+    // IP Sets
     let myIPs = new Set();
     let senderIPs = new Set();
     
@@ -185,21 +187,22 @@
 
     function checkIPMatch() {
         if(hasRenamedToMonitor) return;
-        // Check intersection
+        
+        // Strict Match: Only compare HOST (Local LAN) IPs
+        // This avoids matching on Public IPs (Shared NAT)
         for (let ip of myIPs) {
             if (senderIPs.has(ip)) {
-                // MATCH FOUND: Same Machine/Network
+                // MATCH FOUND: Strict Local Machine Match
                 if (!hasRenamedToMonitor) {
                     hasRenamedToMonitor = true;
-                    // Cancel enforcement timer
                     if(verificationTimer) {
                         clearTimeout(verificationTimer);
                         verificationTimer = null;
                     }
-                    nameWasEmpty = false; // Successfully verified
+                    nameWasEmpty = false; 
                     
                     myUserName = "Studio Monitor";
-                    log("⚡️ Same Network Detected. Renaming to 'Studio Monitor'", "log-fix");
+                    log("⚡️ Same Machine Detected. Renaming to 'Studio Monitor'", "log-fix");
                     
                     renderRoster();
                     
@@ -260,11 +263,11 @@
             currentRoomName = document.getElementById('room').value || "studio1";
             let inputUser = document.getElementById('user').value.trim();
             
-            // STRICT NAME ENFORCEMENT LOGIC
+            // STRICT NAME ENFORCEMENT
             nameWasEmpty = (inputUser === "");
             if (nameWasEmpty) {
-                inputUser = "Verifying Identity..."; // Temp name for IP check
-                log("⚠️ Name Empty. Verifying Network...", "warn");
+                inputUser = "Verifying Identity..."; 
+                log("⚠️ Name Empty. Verifying Local Machine...", "warn");
             }
             myUserName = inputUser;
             
@@ -299,7 +302,7 @@
                             log("🚫 Access Denied: Name Required", "log-err");
                             alert("Name Required for Remote Connections.\n\nPlease enter your name to listen.");
                         }
-                    }, 4000); // 4 seconds to establish WebRTC and find IP
+                    }, 4000); 
                 }
                 
                 connectSignaling(currentRoomName, myUserName);
@@ -420,11 +423,11 @@
             };
             pc.onicecandidate = e => {
                 if(e.candidate) {
-                    // Check candidates for IP match on voice mesh too (optional backup)
                     const parts = e.candidate.candidate.split(' ');
                     if(parts.length > 4) {
                         const ip = parts[4];
-                        if(!ip.includes(':')) {
+                        const type = parts[7]; // Candidate Type
+                        if(!ip.includes(':') && type === 'host') {
                             myIPs.add(ip);
                             checkIPMatch();
                         }
@@ -537,13 +540,15 @@
                 startStats(studioPC);
             };
             
-            // Collect my own IPs
+            // Collect my own HOST IPs
             studioPC.onicecandidate = e => {
                 if(e.candidate) {
                     const parts = e.candidate.candidate.split(' ');
                     if(parts.length > 4) {
                          const ip = parts[4];
-                         if(!ip.includes(':')) {
+                         const type = parts[7]; // Candidate Type
+                         // STRICT CHECK: Only use HOST candidates
+                         if(!ip.includes(':') && type === 'host') {
                              myIPs.add(ip);
                              checkIPMatch();
                          }
@@ -567,11 +572,13 @@
             await studioPC.setLocalDescription(answer);
             ws.send(JSON.stringify({ type: 'answer', sdp: answer.sdp, id: myId, targetId: msg.id }));
         } else if(msg.type === 'candidate') {
-            // COLLECT SENDER IPs here
+            // COLLECT SENDER HOST IPs
             const parts = msg.candidate.split(' ');
             if(parts.length > 4) {
                  const ip = parts[4];
-                 if(!ip.includes(':')) {
+                 const type = parts[7];
+                 // STRICT CHECK: Only use HOST candidates
+                 if(!ip.includes(':') && type === 'host') {
                      senderIPs.add(ip);
                      checkIPMatch();
                  }
