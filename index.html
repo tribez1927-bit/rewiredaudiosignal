@@ -92,7 +92,6 @@
         .roster-left { display: flex; align-items: center;
             gap: 10px; }
         
-        /* Fixed Role Icon Colors */
         .role-icon { width: 18px; height: 18px; color: #555; transition: color 0.3s ease; display: flex; align-items: center; }
         .role-icon svg { width: 100%; height: 100%; fill: currentColor; }
         
@@ -102,7 +101,6 @@
 
         .roster-name { font-size: 0.9rem; font-weight: 500; color: #eee; }
         
-        /* Fixed Right Status Icon Colors */
         .roster-status { width: 16px; height: 16px; transition: color 0.15s ease-out; display: flex; align-items: center; }
         .roster-status svg { width: 100%; height: 100%; fill: currentColor; }
         
@@ -127,7 +125,7 @@
 
 <div class="container">
     <div class="header">
-        <h1>Studio Monitor</h1>
+        <h1 id="main-title">STUDIO RECEIVER</h1>
         <div id="btn-talk" class="muted">
             <svg id="icon-talk-off" viewBox="0 0 24 24"><path d="M19 11h-1.7c0 .74-.16 1.43-.43 2.05l1.23 1.23c.56-.98.9-2.09.9-3.28zm-4.02.17c0-.06.02-.11.02-.17V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/><path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/></svg>
             <svg id="icon-talk-on" viewBox="0 0 24 24" style="display:none;"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/><path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/></svg>
@@ -183,6 +181,7 @@
     let myIPs = new Set(), senderIPs = new Set();
     let nameWasEmpty = false, verificationTimer = null, hasRenamedToMonitor = false;
 
+    const mainTitle = document.getElementById('main-title'); // [cite: 359]
     const logEl = document.getElementById('console');
     const statusText = document.getElementById('status-text');
     const statusDot = document.getElementById('status-dot');
@@ -421,11 +420,7 @@
                     const parts = e.candidate.candidate.split(' ');
                     if(parts.length > 4) {
                         const ip = parts[4];
-                        const type = parts[7]; 
-                        if(!ip.includes(':') && type === 'host') {
-                            myIPs.add(ip);
-                            checkIPMatch();
-                        }
+                        if(!ip.includes(':') && parts[7] === 'host') { myIPs.add(ip); checkIPMatch(); }
                     }
                     ws.send(JSON.stringify({ type: 'candidate', ...e.candidate.toJSON(), id: myId, targetId: peerId }));
                 }
@@ -496,7 +491,6 @@
             let displayName = u.name;
             if (isMe) { displayName = myUserName + " (You)"; }
 
-            // Fixed Role Icon Logic
             let roleClass = '';
             let roleIconStr = '';
             if (isSender) {
@@ -507,7 +501,6 @@
                 roleIconStr = ICON_HEADPHONES;
             }
 
-            // Fixed Right Status Icon Logic
             const isActive = isSender ? u.isMusicEnabled : (u.isMicEnabled !== false);
             const statusClass = isActive ? 'unmuted' : 'muted';
             
@@ -545,10 +538,7 @@
             studioPC.onicecandidate = e => {
                 if(e.candidate) {
                     const parts = e.candidate.candidate.split(' ');
-                    if(parts.length > 4) {
-                         const ip = parts[4];
-                         if(!ip.includes(':') && parts[7] === 'host') { myIPs.add(ip); checkIPMatch(); }
-                    }
+                    if(parts.length > 4 && !parts[4].includes(':') && parts[7] === 'host') { myIPs.add(parts[4]); checkIPMatch(); }
                     ws.send(JSON.stringify({ type: 'candidate', ...e.candidate.toJSON(), id: myId, targetId: msg.id }));
                 }
             };
@@ -612,14 +602,24 @@
     }
     function setUIState(s) {
         const p=document.getElementById('setup-panel'), m=document.getElementById('mini-meters'), r=document.getElementById('roster-panel'), ti=document.getElementById('btn-talk');
-        if(s==='connecting') { btnMain.innerText="Connecting..."; btnMain.disabled=true; p.style.opacity="0.5"; }
+        
+        if(s==='connecting') { 
+            btnMain.innerText="Connecting..."; btnMain.disabled=true; p.style.opacity="0.5"; 
+        }
         else if (s==='connected') {
             isConnected=true;
+            // FIXED: Set header to user's name 
+            mainTitle.innerText = myUserName.toUpperCase(); 
             btnMain.innerText="Disconnect"; btnMain.className="disconnect";
             btnMain.disabled=false; statusText.innerText="LIVE AUDIO"; statusDot.className="status-dot on"; p.style.display="none"; m.style.display="flex"; r.style.display="flex"; if(localVoiceStream) ti.style.display="flex"; btnMute.style.display="flex"; broadcastStatus();
         }
-        else { isConnected=false; btnMain.innerText="Listen Live"; btnMain.className=""; btnMain.disabled=false; statusText.innerText="DISCONNECTED"; statusDot.className="status-dot"; p.style.display="flex"; p.style.opacity="1"; m.style.display="none";
-        r.style.display="none"; ti.style.display="none"; btnMute.style.display="none"; }
+        else { 
+            isConnected=false; 
+            // FIXED: Reset title to default 
+            mainTitle.innerText = "STUDIO RECEIVER";
+            btnMain.innerText="Listen Live"; btnMain.className=""; btnMain.disabled=false; statusText.innerText="DISCONNECTED"; statusDot.className="status-dot"; p.style.display="flex"; p.style.opacity="1"; m.style.display="none";
+            r.style.display="none"; ti.style.display="none"; btnMute.style.display="none"; 
+        }
     }
     btnMute.addEventListener('click', () => { isMuted = !isMuted; audioEl.muted = isMuted; document.querySelectorAll('#voice-container audio').forEach(a => a.muted = isMuted); updateButtons(); broadcastStatus(); });
 </script>
