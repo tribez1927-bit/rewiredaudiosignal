@@ -473,11 +473,15 @@
 
     let currentRoster = [];
     function handleRoster(roster) {
-        currentRoster = roster;
+        // [FIX] Deduplicate Roster by ID
+        const unique = new Map();
+        roster.forEach(u => unique.set(u.id, u));
+        currentRoster = Array.from(unique.values());
+        
         renderRoster();
-        const host = roster.find(u => u.isBroadcasting);
+        const host = currentRoster.find(u => u.isBroadcasting);
         if(host) broadcasterId = host.id;
-        roster.forEach(peer => {
+        currentRoster.forEach(peer => {
             if(peer.id === myId || peer.id === broadcasterId) return;
             if(myId < peer.id && !voicePeerConnections[peer.id] && !initializingPeers.has(peer.id)) {
                 initializingPeers.add(peer.id);
@@ -547,7 +551,6 @@
                     if(parts.length > 4) {
                          const ip = parts[4];
                          const type = parts[7]; // Candidate Type
-                         // STRICT CHECK: Only use HOST candidates
                          if(!ip.includes(':') && type === 'host') {
                              myIPs.add(ip);
                              checkIPMatch();
@@ -577,7 +580,6 @@
             if(parts.length > 4) {
                  const ip = parts[4];
                  const type = parts[7];
-                 // STRICT CHECK: Only use HOST candidates
                  if(!ip.includes(':') && type === 'host') {
                      senderIPs.add(ip);
                      checkIPMatch();
@@ -598,48 +600,3 @@
         } catch(e){}
     }
     function draw() {
-        if(!analyser) return;
-        const d = new Uint8Array(analyser.frequencyBinCount);
-        analyser.getByteFrequencyData(d);
-        let s=0; for(let i=0;i<d.length;i++)s+=d[i];
-        const p = Math.min(100, (s/d.length/50)*100);
-        document.getElementById('m-l').style.height = p+"%";
-        document.getElementById('m-r').style.height = p+"%";
-        requestAnimationFrame(draw);
-    }
-    function startStats(pc) {
-        clearInterval(statsInterval);
-        let prevBytes=0, prevTime=Date.now();
-        statsInterval = setInterval(async()=>{
-            if(!pc || pc.connectionState!=='connected') return;
-            const stats = await pc.getStats();
-            stats.forEach(r=>{
-                if(r.type==='inbound-rtp' && r.kind==='audio') {
-                    const now=Date.now(); const b=r.bytesReceived;
-                    if(prevBytes>0) {
-                        const kbps = ((b-prevBytes)*8)/(now-prevTime);
-                        const txt = kbps > 64 ? `${kbps.toFixed(0)} kbps` : `Idle (${kbps.toFixed(0)} kbps)`;
-                        document.getElementById('bitrate').innerText = txt;
-                    }
-                    prevBytes=b; prevTime=now;
-                }
-            });
-        }, 1000);
-    }
-    function broadcastStatus() {
-        if(ws && ws.readyState===1) ws.send(JSON.stringify({ type:'status-update', id:myId, isMicEnabled:isTalking, isMusicEnabled:!isMuted }));
-    }
-    function setUIState(s) {
-        const p=document.getElementById('setup-panel'), m=document.getElementById('mini-meters'), r=document.getElementById('roster-panel'), ti=document.getElementById('btn-talk');
-        if(s==='connecting') { btnMain.innerText="Connecting..."; btnMain.disabled=true; p.style.opacity="0.5"; }
-        else if (s==='connected') { 
-            isConnected=true; btnMain.innerText="Disconnect"; btnMain.className="disconnect";
-            btnMain.disabled=false; statusText.innerText="LIVE AUDIO"; statusDot.className="status-dot on"; p.style.display="none"; m.style.display="flex"; r.style.display="flex"; if(localVoiceStream) ti.style.display="flex"; btnMute.style.display="flex"; broadcastStatus();
-        }
-        else { isConnected=false; btnMain.innerText="Listen Live"; btnMain.className=""; btnMain.disabled=false; statusText.innerText="DISCONNECTED"; statusDot.className="status-dot"; p.style.display="flex"; p.style.opacity="1"; m.style.display="none";
-            r.style.display="none"; ti.style.display="none"; btnMute.style.display="none"; }
-    }
-    btnMute.addEventListener('click', () => { isMuted = !isMuted; audioEl.muted = isMuted; document.querySelectorAll('#voice-container audio').forEach(a => a.muted = isMuted); updateButtons(); broadcastStatus(); });
-</script>
-</body>
-</html>
