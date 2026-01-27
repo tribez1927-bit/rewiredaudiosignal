@@ -112,6 +112,9 @@
         .mini-meter-col { width: 4px; height: 100%; background: #333; border-radius: 1px; position: relative; overflow: hidden; }
         .mini-meter-fill { width: 100%; position: absolute; bottom: 0; background: var(--success); height: 0%; transition: height 0.05s linear; }
         
+        /* Fixed column alignment for the sender meters */
+        .meter-column-fixed { width: 18px; display: flex; justify-content: center; align-items: center; }
+
         .bitrate { font-family: monospace; font-size: 0.7rem; color: #666; margin-top: 4px; }
         
         #console { height: 150px; background: #000; border-radius: 8px; border: 1px solid #333; padding: 10px; font-family: monospace; font-size: 9px; color: #636366; overflow-y: auto; width: 100%; box-sizing: border-box; }
@@ -463,13 +466,15 @@
             const isSender = u.isBroadcasting;
             let displayName = isMe ? myUserName + " (You)" : u.name;
 
-            // Updated Role Icon Area: Meters for sender row ONLY[cite: 342, 512].
             let leftArea = '';
             if (isSender) {
+                // FIXED: Wrapped meters in a column container that center-aligns them with headphones
                 leftArea = `
-                    <div class="mini-meters" style="width:18px;">
-                        <div class="mini-meter-col"><div id="ml-${u.id}" class="mini-meter-fill"></div></div>
-                        <div class="mini-meter-col"><div id="mr-${u.id}" class="mini-meter-fill"></div></div>
+                    <div class="meter-column-fixed">
+                        <div class="mini-meters">
+                            <div class="mini-meter-col"><div id="ml-${u.id}" class="mini-meter-fill"></div></div>
+                            <div class="mini-meter-col"><div id="mr-${u.id}" class="mini-meter-fill"></div></div>
+                        </div>
                     </div>`;
             } else {
                 const muteClass = (u.isMusicEnabled !== false) ? 'recv-unmuted' : 'recv-muted';
