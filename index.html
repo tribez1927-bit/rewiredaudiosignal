@@ -56,65 +56,56 @@
         #btn-talk svg { width: 16px; height: 16px; fill: currentColor;
             }
         
-        @keyframes pulse { 0% { opacity: 1;
-            } 50% { opacity: 0.5; } 100% { opacity: 1;
-            } }
+        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
 
-        .input-group { display: flex; gap: 10px; width: 100%;
-            }
+        .input-group { display: flex; gap: 10px; width: 100%; }
         input { flex: 1; background: #2c2c2e; border: none; color: white; padding: 14px;
             border-radius: 12px; text-align: center; font-size: 15px; outline: none; min-width: 0;
             }
-        .controls-row { display: flex; flex-direction: column; gap: 12px; width: 100%;
-            }
+        .controls-row { display: flex; flex-direction: column; gap: 12px; width: 100%; }
         
         /* Volume Controls Area */
         .volume-container { display: none; align-items: center; gap: 12px; background: #2c2c2e; padding: 8px 16px; border-radius: 14px; }
         #vol-slider { flex: 1; cursor: pointer; accent-color: var(--accent); }
         
-        button { border: none;
-            border-radius: 14px; font-weight: 600; cursor: pointer; transition: 0.2s; }
-        #btn-main { flex: 1;
-            background: var(--accent); color: white; height: 56px; font-size: 1rem; width: 100%; }
-        #btn-main.disconnect { background: var(--danger);
-            }
+        button { border: none; border-radius: 14px; font-weight: 600; cursor: pointer; transition: 0.2s; }
+        #btn-main { flex: 1; background: var(--accent); color: white; height: 56px; font-size: 1rem; width: 100%; }
+        #btn-main.disconnect { background: var(--danger); }
         
         #btn-mute { width: 44px; height: 44px; background: transparent; color: #8e8e93; display: flex; align-items: center; justify-content: center; }
         #btn-mute.active { color: var(--accent); }
         #btn-mute.muted-state { color: var(--danger); }
         #btn-mute svg { width: 22px; height: 22px; fill: currentColor; }
 
-        #roster-panel { display: none; flex-direction: column; gap: 8px; border-top: 1px solid #333;
-            padding-top: 15px; }
-        .roster-header { font-size: 0.9rem; color: #8e8e93; font-weight: 700; text-align: center;
-            margin-bottom: 8px; }
-        .roster-item { display: flex; align-items: center; justify-content: space-between; background: #252527;
-            padding: 10px 12px; border-radius: 10px; }
-        .roster-left { display: flex; align-items: center;
-            gap: 10px; }
+        #roster-panel { display: none; flex-direction: column; gap: 8px; border-top: 1px solid #333; padding-top: 15px; }
+        .roster-header { font-size: 0.9rem; color: #8e8e93; font-weight: 700; text-align: center; margin-bottom: 8px; }
+        .roster-item { display: flex; align-items: center; justify-content: space-between; background: #252527; padding: 10px 12px; border-radius: 10px; }
+        .roster-left { display: flex; align-items: center; gap: 10px; }
         
         .role-icon { width: 18px; height: 18px; color: #555; transition: color 0.3s ease; display: flex; align-items: center; }
         .role-icon svg { width: 100%; height: 100%; fill: currentColor; }
-        
         .role-icon.sender { color: var(--accent); }
         .role-icon.recv-unmuted { color: var(--success); }
         .role-icon.recv-muted { color: var(--warn); }
 
         .roster-name { font-size: 0.9rem; font-weight: 500; color: #eee; }
-        
         .roster-status { width: 16px; height: 16px; transition: color 0.15s ease-out; display: flex; align-items: center; }
         .roster-status svg { width: 100%; height: 100%; fill: currentColor; }
-        
         .roster-status.unmuted { color: var(--success); }
         .roster-status.muted { color: var(--warn); }
+        .roster-status.signal { color: var(--success-light); filter: drop-shadow(0 0 5px var(--success)); transform: scale(1.1); }
 
         .mini-meters { display: flex; gap: 2px; height: 14px; align-items: flex-end; }
         .mini-meter-col { width: 4px; height: 100%; background: #333; border-radius: 1px; position: relative; overflow: hidden; }
         .mini-meter-fill { width: 100%; position: absolute; bottom: 0; background: var(--success); height: 0%; transition: height 0.05s linear; }
+        
+        /* Fixed column alignment for the sender meters */
         .meter-column-fixed { width: 18px; display: flex; justify-content: center; align-items: center; }
 
         .bitrate { font-family: monospace; font-size: 0.7rem; color: #666; margin-top: 4px; }
         #console { height: 150px; background: #000; border-radius: 8px; border: 1px solid #333; padding: 10px; font-family: monospace; font-size: 9px; color: #636366; overflow-y: auto; width: 100%; box-sizing: border-box; }
+        .log-err { color: var(--danger); } .log-mic { color: #d63aff; } .log-ice { color: var(--ice); } .log-sig { color: var(--sig); } .log-vol { color: var(--vol); }
+        .log-fix { color: var(--success); font-weight: bold; } .log-success { color: var(--success); } .log-warn { color: var(--warn); }
     </style>
 </head>
 <body>
@@ -214,6 +205,7 @@
                     if(verificationTimer) { clearTimeout(verificationTimer); verificationTimer = null; }
                     nameWasEmpty = false;
                     myUserName = "Studio Monitor";
+                    log("⚡️ Same Machine Detected. Renaming to 'Studio Monitor'", "log-fix");
                     renderRoster();
                     if(ws && ws.readyState === 1) {
                          ws.send(JSON.stringify({ type: 'join', room: currentRoomName, name: myUserName, id: myId, role: 'receiver', isBroadcasting: false }));
@@ -231,9 +223,13 @@
             const analyzer = audioCtx.createAnalyser();
             analyzer.fftSize = 256;
             
-            // ROUTE: src -> analyzer -> masterGain -> destination
+            // ROUTE: src -> analyzer
             src.connect(analyzer);
-            analyzer.connect(masterGain);
+            
+            // ROUTE: only non-local audio goes to masterGain (Speaker)
+            if (!label.includes("Local")) {
+                analyzer.connect(masterGain);
+            }
 
             const data = new Uint8Array(analyzer.frequencyBinCount);
             const timer = setInterval(() => {
@@ -251,6 +247,13 @@
                         fillR.style.height = p + "%";
                     }
                 }
+                
+                // Restored volume logging
+                if (avg > 25 && Math.random() > 0.98) {
+                    const tag = label.includes("Mic") ? "[MIC]" : "[VOICE]";
+                    const logLabel = rosterId ? getName(rosterId) : label;
+                    log(`${tag} ${logLabel}: ${avg.toFixed(0)}`, "vol");
+                }
             }, 60);
         } catch(e) { log(`Route Error: ${e.message}`, "err"); }
     }
@@ -260,8 +263,12 @@
             currentRoomName = document.getElementById('room').value || "studio1";
             let inputUser = document.getElementById('user').value.trim();
             nameWasEmpty = (inputUser === "");
-            if (nameWasEmpty) { inputUser = "Verifying Identity..."; }
+            if (nameWasEmpty) {
+                inputUser = "Verifying Identity...";
+                log("⚠️ Name Empty. Verifying Local Machine...", "warn");
+            }
             myUserName = inputUser;
+            document.getElementById('roster-title').innerText = currentRoomName;
             setUIState('connecting');
 
             try {
@@ -272,13 +279,16 @@
                 
                 await audioCtx.resume();
                 
+                log("🎙 Requesting Mic...", "mic");
                 try {
                     localVoiceStream = await navigator.mediaDevices.getUserMedia({
                         audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
                     });
                     localVoiceStream.getAudioTracks().forEach(t => t.enabled = false);
+                    log("🎙 Mic Ready (Muted)", "mic");
                     monitorAndRouteAudio(localVoiceStream, "Local Mic", myId);
                 } catch(e) {
+                    log("🚫 Mic Failed: " + e.message, "err");
                     localVoiceStream = null;
                 }
                 
@@ -286,12 +296,14 @@
                     verificationTimer = setTimeout(() => {
                          if (nameWasEmpty && !hasRenamedToMonitor) {
                             disconnectAll();
-                            alert("Name Required for Remote Connections.");
+                            log("🚫 Access Denied: Name Required", "log-err");
+                            alert("Name Required for Remote Connections.\n\nPlease enter your name to listen.");
                         }
                     }, 4000);
                 }
                 connectSignaling(currentRoomName, myUserName);
             } catch(e) {
+                log("Setup Failed: " + e.message, "err");
                 setUIState('disconnected');
             }
         } else {
@@ -321,6 +333,7 @@
 
     btnTalk.addEventListener('click', () => {
         if (needsRepair) {
+            log("[FIX] 🔧 Repairing...", "log-fix");
             for(let id in voicePeerConnections) {
                 const session = voicePeerConnections[id];
                 if (session.pc.connectionState === 'failed' || session.pc.connectionState === 'disconnected') {
@@ -335,9 +348,10 @@
             updateButtons();
             return;
         }
-        if (!localVoiceStream) return;
+        if (!localVoiceStream) return log("No Mic Available", "err");
         isTalking = !isTalking;
         localVoiceStream.getAudioTracks().forEach(t => t.enabled = isTalking);
+        log(isTalking ? "🎙 Mic LIVE" : "🎙 Mic Muted", "mic");
         updateButtons();
         broadcastStatus();
     });
@@ -348,7 +362,6 @@
             lastVolume = val;
             if (masterGain) masterGain.gain.setTargetAtTime(val, audioCtx.currentTime, 0.05);
         } else {
-            // If dragging slider while muted, we update the "recovery" volume
             lastVolume = val;
         }
         updateButtons();
@@ -359,7 +372,6 @@
         if (isMuted) {
             if (masterGain) masterGain.gain.setTargetAtTime(0, audioCtx.currentTime, 0.05);
         } else {
-            // Restore to last slider position
             if (masterGain) masterGain.gain.setTargetAtTime(lastVolume, audioCtx.currentTime, 0.05);
         }
         updateButtons();
@@ -392,6 +404,7 @@
     function connectSignaling(room, user) {
         ws = new WebSocket(WS_URL);
         ws.onopen = () => {
+            log("WS Connected", "net");
             ws.send(JSON.stringify({ type: 'join', room, name: user, id: myId, role: 'receiver', isBroadcasting: false }));
         };
         ws.onmessage = e => {
@@ -402,7 +415,13 @@
             if(isBroadcaster) handleStudioMsg(msg);
             else handleVoiceMsg(msg);
         };
-        ws.onclose = () => { setUIState('disconnected'); };
+        ws.onclose = () => { 
+            if (studioPC && (studioPC.connectionState === 'connected' || studioPC.connectionState === 'completed')) {
+                log("⚠️ Signal Lost (Audio Persisting)", "warn");
+            } else {
+                setUIState('disconnected');
+            }
+        };
     }
 
     function getVoicePC(peerId) {
@@ -411,16 +430,29 @@
             pc.addTransceiver('audio', { direction: 'sendrecv' });
             if(localVoiceStream) localVoiceStream.getTracks().forEach(t => pc.addTrack(t, localVoiceStream));
             pc.ontrack = e => {
+                log(`🗣 [VOICE] Audio from ${getName(peerId)}`, "info");
                 monitorAndRouteAudio(e.streams[0], `Rx ${peerId.substring(0,4)}`, peerId);
             };
             pc.onicecandidate = e => {
                 if(e.candidate) {
+                    const parts = e.candidate.candidate.split(' ');
+                    if(parts.length > 4) {
+                        const ip = parts[4];
+                        const type = parts[7];
+                        if(!ip.includes(':') && type === 'host') {
+                            myIPs.add(ip);
+                            checkIPMatch();
+                        }
+                    }
                     ws.send(JSON.stringify({ type: 'candidate', ...e.candidate.toJSON(), id: myId, targetId: peerId }));
                 }
             };
             pc.oniceconnectionstatechange = () => {
-                if (pc.iceConnectionState === 'failed' || pc.iceConnectionState === 'disconnected') { needsRepair = true; updateButtons(); }
-                updateRosterStatus(peerId, pc.iceConnectionState);
+                const state = pc.iceConnectionState;
+                if (state === 'failed') log(`🗣 [VOICE] Failed ${getName(peerId)}`, "err");
+                if (state === 'connected') log(`🗣 [VOICE] Connected ${getName(peerId)}`, "net");
+                if (state === 'failed' || state === 'disconnected') { needsRepair = true; updateButtons(); }
+                updateRosterStatus(peerId, state);
             };
             voicePeerConnections[peerId] = { pc: pc, candidates: [] };
         }
@@ -448,7 +480,7 @@
                  if(pc.remoteDescription) pc.addIceCandidate(msg);
                  else session.candidates.push(msg);
             }
-        } catch(e) {}
+        } catch(e) { log(e.message, "err"); }
     }
 
     let currentRoster = [];
@@ -519,19 +551,33 @@
             if(studioPC) studioPC.close();
             studioPC = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }] });
             studioPC.ontrack = e => {
+                log("🎵 [STUDIO] Stream Active", "success");
                 startVisuals(e.streams[0]);
                 startStats(studioPC);
             };
             studioPC.onicecandidate = e => {
                 if(e.candidate) {
                     const parts = e.candidate.candidate.split(' ');
-                    if(parts.length > 4 && !parts[4].includes(':') && parts[7] === 'host') { myIPs.add(parts[4]); checkIPMatch(); }
+                    if(parts.length > 4) {
+                         const ip = parts[4];
+                         const type = parts[7]; 
+                         if(!ip.includes(':') && type === 'host') {
+                             myIPs.add(ip);
+                             checkIPMatch();
+                         }
+                    }
                     ws.send(JSON.stringify({ type: 'candidate', ...e.candidate.toJSON(), id: myId, targetId: msg.id }));
                 }
             };
             studioPC.onconnectionstatechange = () => {
-                if(studioPC.connectionState === 'connected') { setUIState('connected'); }
-                else if (['disconnected', 'failed', 'closed'].includes(studioPC.connectionState)) { setUIState('disconnected'); }
+                if(studioPC.connectionState === 'connected') { 
+                    log("🎵 [STUDIO] Connected", "success"); 
+                    setUIState('connected'); 
+                }
+                else if (['disconnected', 'failed', 'closed'].includes(studioPC.connectionState)) { 
+                    log("🎵 [STUDIO] Stream Ended", "err"); 
+                    setUIState('disconnected'); 
+                }
             };
             await studioPC.setRemoteDescription(new RTCSessionDescription({ type: 'offer', sdp: msg.sdp }));
             const answer = await studioPC.createAnswer();
@@ -540,7 +586,14 @@
             ws.send(JSON.stringify({ type: 'answer', sdp: answer.sdp, id: myId, targetId: msg.id }));
         } else if(msg.type === 'candidate') {
             const parts = msg.candidate.split(' ');
-            if(parts.length > 4 && !parts[4].includes(':') && parts[7] === 'host') { senderIPs.add(parts[4]); checkIPMatch(); }
+            if(parts.length > 4) {
+                 const ip = parts[4];
+                 const type = parts[7];
+                 if(!ip.includes(':') && type === 'host') {
+                     senderIPs.add(ip);
+                     checkIPMatch();
+                 }
+            }
             if(studioPC) studioPC.addIceCandidate(msg);
         }
     }
