@@ -168,6 +168,12 @@
         if(type) line.className=`log-${type}`;
         logEl.prepend(line);
     }
+    
+    // HELPER: Resolve ID to Name
+    function getName(id) {
+        const u = currentRoster.find(x => x.id === id);
+        return u ? u.name : id.substring(0,5);
+    }
 
     // --- AUDIO ROUTING & VISUAL FEEDBACK ---
     function monitorAndRouteAudio(stream, label, rosterId) {
@@ -204,7 +210,9 @@
                 
                 if (avg > 25 && Math.random()>0.98) {
                     const tag = label.includes("Mic") ? "[MIC]" : "[VOICE]";
-                    log(`${tag} ${label}: ${avg.toFixed(0)}`, "vol");
+                    // Use Name in Log
+                    const logLabel = rosterId ? getName(rosterId) : label;
+                    log(`${tag} ${logLabel}: ${avg.toFixed(0)}`, "vol");
                 }
             }, 100);
         } catch(e) { log(`Route Error: ${e.message}`, "err"); }
@@ -354,7 +362,7 @@
             pc.addTransceiver('audio', { direction: 'sendrecv' });
             if(localVoiceStream) localVoiceStream.getTracks().forEach(t => pc.addTrack(t, localVoiceStream));
             pc.ontrack = e => {
-                log(`🗣 [VOICE] Audio from ${peerId.substring(0,4)}`, "info");
+                log(`🗣 [VOICE] Audio from ${getName(peerId)}`, "info");
                 monitorAndRouteAudio(e.streams[0], `Rx ${peerId.substring(0,4)}`, peerId);
                 const aud = document.createElement('audio');
                 aud.srcObject = e.streams[0];
@@ -371,8 +379,8 @@
             };
             pc.oniceconnectionstatechange = () => {
                 const state = pc.iceConnectionState;
-                if (state === 'failed') log(`🗣 [VOICE] Failed ${peerId.substring(0,4)}`, "err");
-                if (state === 'connected') log(`🗣 [VOICE] Connected ${peerId.substring(0,4)}`, "net");
+                if (state === 'failed') log(`🗣 [VOICE] Failed ${getName(peerId)}`, "err");
+                if (state === 'connected') log(`🗣 [VOICE] Connected ${getName(peerId)}`, "net");
                 
                 if (state === 'failed' || state === 'disconnected') { needsRepair = true; updateButtons(); }
                 updateRosterStatus(peerId, state);
@@ -439,17 +447,17 @@
             const isMe = u.id === myId;
             const isSender = u.isBroadcasting;
             
-            // [FIXED] Left Icon Logic: Headphone color depends ONLY on u.isMusicEnabled (Listening state)
+            // Left Icon: Headphones (Listening State)
             let roleIcon = '';
             if (isSender) {
                 roleIcon = `<div class="role-icon sender">${ICON_MIC}</div>`;
             } else {
-                // Decoupled from isMicEnabled
+                // [FIXED] Decoupled from Mic state. Now depends ONLY on isMusicEnabled
                 const muteClass = (u.isMusicEnabled !== false) ? 'recv-unmuted' : 'recv-muted';
                 roleIcon = `<div class="role-icon ${muteClass}">${ICON_HEADPHONES}</div>`;
             }
 
-            // Right Icon Logic: Mic Icon depends ONLY on u.isMicEnabled (Talkback state)
+            // Right Icon: Mic (Talking State)
             const isActive = isSender ? u.isMusicEnabled : (u.isMicEnabled !== false);
             const rightClass = isActive ? 'roster-status unmuted' : 'roster-status muted';
             
@@ -479,6 +487,7 @@
                 startVisuals(e.streams[0]);
                 startStats(studioPC);
             };
+            // Connection State Logic
             studioPC.onconnectionstatechange = () => { 
                 if(studioPC.connectionState === 'connected') {
                     log("🎵 [STUDIO] Connected", "success");
