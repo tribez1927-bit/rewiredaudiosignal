@@ -148,7 +148,11 @@
     let isConnected = false, isMuted = false, isTalking = false, needsRepair = false;
     let localVoiceStream = null;
     let broadcasterId = null;
-    let animationId, statsInterval;
+    let currentRoomName = "";
+    let myUserName = "";
+    let myIPs = new Set();
+    let senderIPs = new Set();
+    let hasRenamedToMonitor = false;
     
     // REFS
     const logEl = document.getElementById('console');
@@ -169,37 +173,64 @@
         logEl.prepend(line);
     }
     
-    // HELPER: Resolve ID to Name
     function getName(id) {
+        if(id === myId) return myUserName;
         const u = currentRoster.find(x => x.id === id);
         return u ? u.name : id.substring(0,5);
     }
 
-    // --- AUDIO ROUTING & VISUAL FEEDBACK ---
+    function checkIPMatch() {
+        if(hasRenamedToMonitor) return;
+        // Check intersection
+        for (let ip of myIPs) {
+            if (senderIPs.has(ip)) {
+                // MATCH FOUND
+                // If name is default or empty (or essentially unset), rename
+                // We'll rename if it hasn't been forcibly set to something else
+                if (!hasRenamedToMonitor) {
+                    hasRenamedToMonitor = true;
+                    myUserName = "Studio Monitor";
+                    log("⚡️ Same Network Detected. Renaming to 'Studio Monitor'", "log-fix");
+                    
+                    // Update Local UI
+                    renderRoster();
+                    
+                    // Inform Server
+                    if(ws && ws.readyState === 1) {
+                         ws.send(JSON.stringify({ 
+                             type: 'join', 
+                             room: currentRoomName, 
+                             name: myUserName, 
+                             id: myId, 
+                             role: 'receiver', 
+                             isBroadcasting: false 
+                         }));
+                    }
+                }
+                break;
+            }
+        }
+    }
+
     function monitorAndRouteAudio(stream, label, rosterId) {
         if (!audioCtx) return;
         try {
             const src = audioCtx.createMediaStreamSource(stream);
-            // Route Remote to Speakers (Block Local)
             if (!label.includes("Local")) {
                 const gain = audioCtx.createGain();
                 gain.gain.value = 1.0;
                 src.connect(gain);
                 gain.connect(audioCtx.destination);
             }
-
             const analyzer = audioCtx.createAnalyser();
             analyzer.fftSize = 256;
             src.connect(analyzer);
             const data = new Uint8Array(analyzer.frequencyBinCount);
-            
             const timer = setInterval(() => {
                 if(!stream.active) { clearInterval(timer); return; }
                 analyzer.getByteFrequencyData(data);
                 let sum = 0; for(let i=0; i<data.length; i++) sum += data[i];
                 const avg = sum / data.length;
-                
-                // VISUAL SIGNAL ON ROSTER
                 if (rosterId) {
                     const statusIcon = document.getElementById(`status-icon-${rosterId}`);
                     if (statusIcon) {
@@ -207,10 +238,8 @@
                         else statusIcon.classList.remove('signal');
                     }
                 }
-                
                 if (avg > 25 && Math.random()>0.98) {
                     const tag = label.includes("Mic") ? "[MIC]" : "[VOICE]";
-                    // Use Name in Log
                     const logLabel = rosterId ? getName(rosterId) : label;
                     log(`${tag} ${logLabel}: ${avg.toFixed(0)}`, "vol");
                 }
@@ -221,17 +250,17 @@
     // --- MAIN ---
     btnMain.addEventListener('click', async () => {
         if (!isConnected) {
-            const room = document.getElementById('room').value;
-            const user = document.getElementById('user').value;
-            if(!room || !user) return log("Missing info", "err");
+            currentRoomName = document.getElementById('room').value || "studio1";
+            let inputUser = document.getElementById('user').value;
+            if(!inputUser) inputUser = "Receiver";
+            myUserName = inputUser;
             
-            document.getElementById('roster-title').innerText = room;
+            document.getElementById('roster-title').innerText = currentRoomName;
             setUIState('connecting');
 
             try {
                 audioCtx = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: 'interactive', sampleRate: 48000 });
                 await audioCtx.resume();
-                
                 audioEl.srcObject = null;
                 audioEl.muted = false;
                 audioEl.play().catch(()=>{});
@@ -243,14 +272,12 @@
                     });
                     localVoiceStream.getAudioTracks().forEach(t => t.enabled = false);
                     log("🎙 Mic Ready (Muted)", "mic");
-                    
                     monitorAndRouteAudio(localVoiceStream, "Local Mic", myId);
                 } catch(e) {
                     log("🚫 Mic Failed: " + e.message, "err");
                     localVoiceStream = null;
                 }
-
-                connectSignaling(room, user);
+                connectSignaling(currentRoomName, myUserName);
             } catch(e) {
                 log("Setup Failed: " + e.message, "err");
                 setUIState('disconnected');
@@ -271,10 +298,12 @@
         localVoiceStream = null;
         document.getElementById('voice-container').innerHTML = '';
         initializingPeers.clear();
+        myIPs.clear();
+        senderIPs.clear();
+        hasRenamedToMonitor = false;
         setUIState('disconnected');
     }
 
-    // --- REPAIR / TALK ---
     btnTalk.addEventListener('click', () => {
         if (needsRepair) {
             log("[FIX] 🔧 Repairing...", "log-fix");
@@ -292,7 +321,6 @@
             updateButtons();
             return;
         }
-
         if (!localVoiceStream) return log("No Mic Available", "err");
         isTalking = !isTalking;
         localVoiceStream.getAudioTracks().forEach(t => t.enabled = isTalking);
@@ -323,7 +351,6 @@
         }
     }
 
-    // --- SIGNALING ---
     function connectSignaling(room, user) {
         ws = new WebSocket(WS_URL);
         ws.onopen = () => {
@@ -339,9 +366,7 @@
             if(isBroadcaster) handleStudioMsg(msg);
             else handleVoiceMsg(msg);
         };
-        
         ws.onclose = () => {
-            // Only disconnect UI if Studio Audio is ALSO down
             if (studioPC && (studioPC.connectionState === 'connected' || studioPC.connectionState === 'completed')) {
                 log("⚠️ Signal Lost (Audio Persisting)", "warn");
             } else {
@@ -350,15 +375,9 @@
         };
     }
 
-    // --- VOICE MESH ---
     function getVoicePC(peerId) {
         if(!voicePeerConnections[peerId]) {
-            const pc = new RTCPeerConnection({
-                iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
-                iceTransportPolicy: 'all',
-                bundlePolicy: 'max-bundle',
-                iceCandidatePoolSize: 0
-            });
+            const pc = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }] });
             pc.addTransceiver('audio', { direction: 'sendrecv' });
             if(localVoiceStream) localVoiceStream.getTracks().forEach(t => pc.addTrack(t, localVoiceStream));
             pc.ontrack = e => {
@@ -372,8 +391,15 @@
             };
             pc.onicecandidate = e => {
                 if(e.candidate) {
-                    const ip = e.candidate.candidate.split(' ')[4];
-                    if(ip.includes(':')) return;
+                    const parts = e.candidate.candidate.split(' ');
+                    if(parts.length > 4) {
+                        const ip = parts[4];
+                        if(!ip.includes(':')) {
+                            // Collect my own IPs
+                            myIPs.add(ip);
+                            checkIPMatch();
+                        }
+                    }
                     ws.send(JSON.stringify({ type: 'candidate', ...e.candidate.toJSON(), id: myId, targetId: peerId }));
                 }
             };
@@ -381,7 +407,6 @@
                 const state = pc.iceConnectionState;
                 if (state === 'failed') log(`🗣 [VOICE] Failed ${getName(peerId)}`, "err");
                 if (state === 'connected') log(`🗣 [VOICE] Connected ${getName(peerId)}`, "net");
-                
                 if (state === 'failed' || state === 'disconnected') { needsRepair = true; updateButtons(); }
                 updateRosterStatus(peerId, state);
             };
@@ -393,7 +418,6 @@
     async function handleVoiceMsg(msg) {
         const session = getVoicePC(msg.id);
         const pc = session.pc;
-
         try {
             if(msg.type === 'offer') {
                 if(pc.signalingState !== 'stable') return;
@@ -409,22 +433,23 @@
                 while(session.candidates.length) pc.addIceCandidate(session.candidates.shift());
             }
             else if(msg.type === 'candidate') {
-                const ip = msg.candidate.split(' ')[4];
-                if(ip.includes(':')) return;
-                if(pc.remoteDescription) pc.addIceCandidate(msg);
-                else session.candidates.push(msg);
+                 // Check incoming candidates for Voice mesh
+                 const parts = msg.candidate.split(' ');
+                 if(parts.length > 4) {
+                     // Note: We mostly care about Sender IP, but checking peers doesn't hurt
+                 }
+                 if(pc.remoteDescription) pc.addIceCandidate(msg);
+                 else session.candidates.push(msg);
             }
         } catch(e) { log(e.message, "err"); }
     }
 
-    // --- ROSTER ---
     let currentRoster = [];
     function handleRoster(roster) {
         currentRoster = roster;
         renderRoster();
         const host = roster.find(u => u.isBroadcasting);
         if(host) broadcasterId = host.id;
-
         roster.forEach(peer => {
             if(peer.id === myId || peer.id === broadcasterId) return;
             if(myId < peer.id && !voicePeerConnections[peer.id] && !initializingPeers.has(peer.id)) {
@@ -447,17 +472,19 @@
             const isMe = u.id === myId;
             const isSender = u.isBroadcasting;
             
-            // Left Icon: Headphones (Listening State)
+            // Name Display
+            let displayName = u.name;
+            if (isMe) {
+                 displayName = myUserName + " (You)";
+            }
+
             let roleIcon = '';
             if (isSender) {
                 roleIcon = `<div class="role-icon sender">${ICON_MIC}</div>`;
             } else {
-                // [FIXED] Decoupled from Mic state. Now depends ONLY on isMusicEnabled
                 const muteClass = (u.isMusicEnabled !== false) ? 'recv-unmuted' : 'recv-muted';
                 roleIcon = `<div class="role-icon ${muteClass}">${ICON_HEADPHONES}</div>`;
             }
-
-            // Right Icon: Mic (Talking State)
             const isActive = isSender ? u.isMusicEnabled : (u.isMicEnabled !== false);
             const rightClass = isActive ? 'roster-status unmuted' : 'roster-status muted';
             
@@ -466,7 +493,7 @@
             el.innerHTML = `
                 <div class="roster-left">
                     ${roleIcon}
-                    <span class="roster-name">${isMe ? u.name + ' (You)' : u.name}</span>
+                    <span class="roster-name">${displayName}</span>
                 </div>
                 <div id="status-icon-${u.id}" class="${rightClass}">${ICON_MIC}</div>
             `;
@@ -476,7 +503,6 @@
     
     function updateRosterStatus(id, state) { renderRoster(); }
 
-    // STUDIO (High Fidelity)
     async function handleStudioMsg(msg) {
         if(msg.type === 'offer') {
             if(studioPC) studioPC.close();
@@ -487,7 +513,22 @@
                 startVisuals(e.streams[0]);
                 startStats(studioPC);
             };
-            // Connection State Logic
+            
+            // Collect my own IPs during Studio connection
+            studioPC.onicecandidate = e => {
+                if(e.candidate) {
+                    const parts = e.candidate.candidate.split(' ');
+                    if(parts.length > 4) {
+                         const ip = parts[4];
+                         if(!ip.includes(':')) {
+                             myIPs.add(ip);
+                             checkIPMatch();
+                         }
+                    }
+                    ws.send(JSON.stringify({ type: 'candidate', ...e.candidate.toJSON(), id: myId, targetId: msg.id }));
+                }
+            };
+
             studioPC.onconnectionstatechange = () => { 
                 if(studioPC.connectionState === 'connected') {
                     log("🎵 [STUDIO] Connected", "success");
@@ -502,12 +543,20 @@
             answer.sdp = answer.sdp.replace("useinbandfec=1", "useinbandfec=1;stereo=1;sprop-stereo=1;maxaveragebitrate=510000;cbr=1;x-google-min-bitrate=510");
             await studioPC.setLocalDescription(answer);
             ws.send(JSON.stringify({ type: 'answer', sdp: answer.sdp, id: myId, targetId: msg.id }));
-        } else if(msg.type === 'candidate' && studioPC) {
-            studioPC.addIceCandidate(msg);
+        } else if(msg.type === 'candidate') {
+            // COLLECT SENDER IPs here
+            const parts = msg.candidate.split(' ');
+            if(parts.length > 4) {
+                 const ip = parts[4];
+                 if(!ip.includes(':')) {
+                     senderIPs.add(ip);
+                     checkIPMatch();
+                 }
+            }
+            if(studioPC) studioPC.addIceCandidate(msg);
         }
     }
 
-    // VISUALS
     function startVisuals(stream) {
         if (audioCtx.state === 'suspended') audioCtx.resume();
         try {
