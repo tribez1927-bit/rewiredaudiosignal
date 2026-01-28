@@ -99,6 +99,21 @@
         .status-quality.good { background: rgba(41, 121, 255, 0.2); color: var(--accent); }
         .status-quality.poor { background: rgba(255, 149, 0, 0.2); color: var(--warn); }
 
+        /* Connected as text */
+        .connected-as-text {
+            align-self: center;
+            font-size: 0.85rem;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+            color: var(--text-sub);
+            text-align: center;
+            margin-top: -10px;
+            margin-bottom: 10px;
+        }
+        #connected-as-name {
+            color: var(--text-main);
+        }
+
         /* --- CARDS --- */
         .card {
             background: var(--card-bg);
@@ -310,6 +325,10 @@
         </div>
     </div>
 
+    <div id="connected-as" class="connected-as-text" style="display:none">
+        Connected as <span id="connected-as-name"></span>
+    </div>
+
     <div class="card">
         <div id="setup-panel" class="input-group">
             <input id="room" value="studio1" placeholder="Room Name" aria-label="Room Name">
@@ -458,6 +477,8 @@
         bitrateEl: document.getElementById('bitrate'),
         qualityBadge: document.getElementById('quality-badge'),
         headerMeters: document.getElementById('header-meters'),
+        connectedAs: document.getElementById('connected-as'),
+        connectedAsName: document.getElementById('connected-as-name'),
         btnMain: document.getElementById('btn-main'),
         btnMute: document.getElementById('btn-mute'),
         btnTalk: document.getElementById('btn-talk'),
@@ -778,7 +799,10 @@
             if (parts.length > 4) {
                 const ip = parts[4];
                 if (!ip.includes(':') && parts[7] === 'host') {
-                    state.myIPs.add(ip);
+                    if (!state.myIPs.has(ip)) {
+                        state.myIPs.add(ip);
+                        log(`🔍 [MY IP] ${ip}`, "info");
+                    }
                     IdentityManager.checkIPMatch();
                 }
             }
@@ -1101,7 +1125,10 @@
             if (parts.length > 4) {
                 const ip = parts[4];
                 if (!ip.includes(':') && parts[7] === 'host') {
-                    state.senderIPs.add(ip);
+                    if (!state.senderIPs.has(ip)) {
+                        state.senderIPs.add(ip);
+                        log(`🔍 [SENDER IP] ${ip}`, "info");
+                    }
                     IdentityManager.checkIPMatch();
                 }
             }
@@ -1492,38 +1519,86 @@
     // ===== IDENTITY MANAGEMENT =====
 
     class IdentityManager {
+        static isLocalIP(ip) {
+            // Check if IP is localhost or private network address
+            if (ip === '127.0.0.1' || ip === '::1') return true;
+            if (ip.startsWith('192.168.')) return true;
+            if (ip.startsWith('10.')) return true;
+            if (ip.startsWith('172.')) {
+                const second = parseInt(ip.split('.')[1]);
+                if (second >= 16 && second <= 31) return true;
+            }
+            if (ip.startsWith('169.254.')) return true; // Link-local
+            if (ip.startsWith('fe80:')) return true; // IPv6 link-local
+            if (ip.startsWith('fc00:') || ip.startsWith('fd00:')) return true; // IPv6 private
+            return false;
+        }
+
         static checkIPMatch() {
             if (state.hasRenamedToMonitor) return;
             
-            for (let ip of state.myIPs) {
-                if (state.senderIPs.has(ip)) {
-                    if (!state.hasRenamedToMonitor) {
-                        state.hasRenamedToMonitor = true;
-                        
-                        if (state.verificationTimer) {
-                            clearTimeout(state.verificationTimer);
-                            state.verificationTimer = null;
-                        }
-                        
-                        state.nameWasEmpty = false;
-                        state.myUserName = "Studio Monitor";
-                        
-                        log("⚡️ Same Machine Detected → 'Studio Monitor'", "success");
-                        
-                        RosterManager.render();
-                        
-                        SignalingManager.send({
-                            type: 'join',
-                            room: state.currentRoomName,
-                            name: state.myUserName,
-                            id: state.myId,
-                            role: 'receiver',
-                            isBroadcasting: false
-                        });
-                    }
-                    break;
+            // Filter to only local/private IPs
+            const myLocalIPs = Array.from(state.myIPs).filter(ip => this.isLocalIP(ip));
+            const senderLocalIPs = Array.from(state.senderIPs).filter(ip => this.isLocalIP(ip));
+            
+            if (myLocalIPs.length === 0 || senderLocalIPs.length === 0) {
+                return; // No local IPs to compare
+            }
+            
+            // Check for localhost first (strongest signal)
+            const hasLocalhost = myLocalIPs.some(ip => ip === '127.0.0.1' || ip === '::1') &&
+                                 senderLocalIPs.some(ip => ip === '127.0.0.1' || ip === '::1');
+            
+            if (hasLocalhost) {
+                this.activateStudioMonitor();
+                return;
+            }
+            
+            // Count matching local IPs (require at least 2 for confidence)
+            let matchCount = 0;
+            for (let myIP of myLocalIPs) {
+                if (senderLocalIPs.includes(myIP)) {
+                    matchCount++;
                 }
             }
+            
+            // Only activate if we have 2+ matching local IPs or 1 match with small network
+            if (matchCount >= 2 || (matchCount >= 1 && myLocalIPs.length <= 2)) {
+                log(`🔍 Matched ${matchCount} local IP(s): ${myLocalIPs.join(', ')}`, "info");
+                this.activateStudioMonitor();
+            }
+        }
+
+        static activateStudioMonitor() {
+            if (state.hasRenamedToMonitor) return;
+            
+            state.hasRenamedToMonitor = true;
+            
+            if (state.verificationTimer) {
+                clearTimeout(state.verificationTimer);
+                state.verificationTimer = null;
+            }
+            
+            state.nameWasEmpty = false;
+            state.myUserName = "Studio Monitor";
+            
+            log("⚡️ Same Machine Detected → 'Studio Monitor'", "success");
+            
+            // Update the connected-as display if already connected
+            if (state.isConnected && ui.connectedAsName) {
+                ui.connectedAsName.innerText = state.myUserName;
+            }
+            
+            RosterManager.render();
+            
+            SignalingManager.send({
+                type: 'join',
+                room: state.currentRoomName,
+                name: state.myUserName,
+                id: state.myId,
+                role: 'receiver',
+                isBroadcasting: false
+            });
         }
 
         static startVerification() {
@@ -1595,6 +1670,8 @@
                 ui.qualityBadge.style.display = "block";
                 ui.headerMeters.style.display = "flex";
                 ui.networkStats.style.display = "flex";
+                ui.connectedAs.style.display = "block";
+                ui.connectedAsName.innerText = state.myUserName;
                 
                 ui.setupPanel.classList.add('hidden');
                 ui.controlsPanel.classList.remove('hidden');
@@ -1615,6 +1692,7 @@
                 ui.qualityBadge.style.display = "none";
                 ui.headerMeters.style.display = "none";
                 ui.networkStats.style.display = "none";
+                ui.connectedAs.style.display = "none";
 
                 ui.setupPanel.classList.remove('hidden');
                 ui.setupPanel.style.opacity = "1";
