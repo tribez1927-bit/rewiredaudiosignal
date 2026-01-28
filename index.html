@@ -246,6 +246,11 @@
         .roster-item:hover { background: rgba(255,255,255,0.05); }
         .roster-left { display: flex; align-items: center; gap: 14px; }
         .roster-name { font-weight: 600; font-size: 0.95rem; color: #eee; }
+        .roster-name-highlight { 
+            font-weight: 600; 
+            font-size: 0.95rem; 
+            color: var(--warn); 
+        }
         .roster-status { 
             font-size: 0.7rem; 
             color: var(--text-sub); 
@@ -1451,9 +1456,24 @@
             // Update participant count
             ui.participantCount.innerText = `${state.currentRoster.length} online`;
             
-            state.currentRoster.forEach(user => {
+            // Sort roster: Studio stream first, Studio Monitor second, then others alphabetically
+            const sortedRoster = [...state.currentRoster].sort((a, b) => {
+                // Studio broadcaster always first
+                if (a.isBroadcasting) return -1;
+                if (b.isBroadcasting) return 1;
+                
+                // Studio Monitor second
+                if (a.name === "Studio Monitor") return -1;
+                if (b.name === "Studio Monitor") return 1;
+                
+                // Everyone else alphabetically
+                return a.name.localeCompare(b.name);
+            });
+            
+            sortedRoster.forEach(user => {
                 const isMe = user.id === state.myId;
                 const isSender = user.isBroadcasting;
+                const isStudioMonitor = user.name === "Studio Monitor";
                 let displayName = isMe ? state.myUserName + " (You)" : user.name;
 
                 // Build left section
@@ -1498,12 +1518,15 @@
                     }
                 }
                 
+                // Apply orange color to Studio stream and Studio Monitor
+                const nameClass = (isSender || isStudioMonitor) ? 'roster-name-highlight' : 'roster-name';
+                
                 const el = document.createElement('div');
                 el.className = 'roster-item';
                 el.innerHTML = `
                     <div class="roster-left">
                         ${leftArea}
-                        <span class="roster-name">${displayName}${statusBadge}</span>
+                        <span class="${nameClass}">${displayName}${statusBadge}</span>
                     </div>
                     <div id="status-icon-${user.id}" class="icon-box ${statusClass}">${ICONS.MIC}</div>
                 `;
