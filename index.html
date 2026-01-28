@@ -414,8 +414,10 @@
         ICE_RESTART_DELAY: 2000,
         PEER_INIT_DELAY: 500,
         VERIFICATION_TIMEOUT: 4000,
+        ICE_GATHERING_TIMEOUT: 10000,
         STATS_INTERVAL: 1000,
         METER_UPDATE_INTERVAL: 60,
+        PEER_HEALTH_CHECK_INTERVAL: 5000,
         CANDIDATE_TIMEOUT: 10000,
         ICE_SERVERS: [
             { urls: "stun:stun.l.google.com:19302" },
@@ -452,6 +454,7 @@
         studioPC: null,
         masterGain: null,
         statsInterval: null,
+        healthCheckInterval: null,
         meterIntervals: new Map(),
         voicePeerConnections: new Map(),
         pendingPeerConnections: new Set(),
@@ -791,6 +794,20 @@
 
             pc.onicegatheringstatechange = () => {
                 log(`🗣 [ICE] Gathering ${pc.iceGatheringState} for ${getName(peerId)}`, "info");
+                
+                if (pc.iceGatheringState === 'gathering') {
+                    // Set timeout for gathering
+                    session.iceGatheringTimeout = setTimeout(() => {
+                        if (pc.iceGatheringState === 'gathering') {
+                            log(`🗣 [ICE] Gathering timeout for ${getName(peerId)}`, "warn");
+                        }
+                    }, CONFIG.ICE_GATHERING_TIMEOUT);
+                } else if (pc.iceGatheringState === 'complete') {
+                    if (session.iceGatheringTimeout) {
+                        clearTimeout(session.iceGatheringTimeout);
+                        session.iceGatheringTimeout = null;
+                    }
+                }
             };
 
             state.voicePeerConnections.set(peerId, session);
@@ -901,10 +918,15 @@
                     sdp: msg.sdp
                 }));
 
-                // Process queued candidates
+                // Process queued candidates after remote description is set
+                log(`🗣 [SDP] Processing ${session.candidates.length} queued candidates`, "info");
                 while (session.candidates.length > 0) {
-                    const candidate = session.candidates.shift();
-                    await pc.addIceCandidate(candidate.candidate);
+                    const item = session.candidates.shift();
+                    try {
+                        await pc.addIceCandidate(item.candidate);
+                    } catch (e) {
+                        log(`🗣 [ICE] Failed to add queued candidate: ${e.message}`, "warn");
+                    }
                 }
 
                 const answer = await pc.createAnswer();
@@ -947,10 +969,15 @@
                     sdp: msg.sdp
                 }));
 
-                // Process queued candidates
+                // Process queued candidates after remote description is set
+                log(`🗣 [SDP] Processing ${session.candidates.length} queued candidates`, "info");
                 while (session.candidates.length > 0) {
-                    const candidate = session.candidates.shift();
-                    await pc.addIceCandidate(candidate.candidate);
+                    const item = session.candidates.shift();
+                    try {
+                        await pc.addIceCandidate(item.candidate);
+                    } catch (e) {
+                        log(`🗣 [ICE] Failed to add queued candidate: ${e.message}`, "warn");
+                    }
                 }
 
                 log(`🗣 [SDP] Answer processed from ${getName(peerId)}`, "success");
@@ -961,6 +988,20 @@
 
         static async handleCandidate(msg) {
             const peerId = msg.id;
+            
+            // Also collect sender IPs from voice peer candidates
+            const parts = msg.candidate ? msg.candidate.split(' ') : [];
+            if (parts.length > 4) {
+                const ip = parts[4];
+                if (!ip.includes(':') && parts[7] === 'host') {
+                    if (!state.senderIPs.has(ip)) {
+                        state.senderIPs.add(ip);
+                        log(`🔍 [SENDER IP] ${ip} (from ${getName(peerId)})`, "info");
+                    }
+                    IdentityManager.checkIPMatch();
+                }
+            }
+            
             const session = state.voicePeerConnections.get(peerId);
             
             if (!session) {
@@ -972,7 +1013,7 @@
             const candidate = new RTCIceCandidate(msg);
 
             try {
-                if (pc.remoteDescription) {
+                if (pc.remoteDescription && pc.remoteDescription.type) {
                     await pc.addIceCandidate(candidate);
                 } else {
                     // Queue candidates with timeout
@@ -1002,6 +1043,24 @@
 
             try {
                 const session = this.createVoicePeer(peerId);
+                
+                // Wait for ICE gathering to start
+                await new Promise(resolve => {
+                    if (session.pc.iceGatheringState === 'complete') {
+                        resolve();
+                    } else {
+                        const handler = () => {
+                            if (session.pc.iceGatheringState !== 'new') {
+                                session.pc.removeEventListener('icegatheringstatechange', handler);
+                                resolve();
+                            }
+                        };
+                        session.pc.addEventListener('icegatheringstatechange', handler);
+                        // Timeout after 5 seconds
+                        setTimeout(resolve, 5000);
+                    }
+                });
+                
                 const offer = await session.pc.createOffer();
                 await session.pc.setLocalDescription(offer);
 
@@ -1019,7 +1078,7 @@
                     state.pendingPeerConnections.delete(peerId);
                 }
             } catch (e) {
-                log(`🗣 [SDP] Failed to create offer: ${e.message}`, "err");
+                log(`🗣 [SDP] Failed to create offer for ${getName(peerId)}: ${e.message}`, "err");
                 state.pendingPeerConnections.delete(peerId);
             }
         }
@@ -1027,6 +1086,9 @@
         static closePeer(peerId) {
             const session = state.voicePeerConnections.get(peerId);
             if (session) {
+                if (session.iceGatheringTimeout) {
+                    clearTimeout(session.iceGatheringTimeout);
+                }
                 session.pc.close();
                 state.voicePeerConnections.delete(peerId);
                 state.meterIntervals.delete(peerId);
@@ -1036,10 +1098,48 @@
 
         static closeAll() {
             state.voicePeerConnections.forEach((session, peerId) => {
+                if (session.iceGatheringTimeout) {
+                    clearTimeout(session.iceGatheringTimeout);
+                }
                 session.pc.close();
             });
             state.voicePeerConnections.clear();
             state.pendingPeerConnections.clear();
+            
+            if (state.healthCheckInterval) {
+                clearInterval(state.healthCheckInterval);
+                state.healthCheckInterval = null;
+            }
+        }
+
+        static startHealthMonitoring() {
+            if (state.healthCheckInterval) {
+                clearInterval(state.healthCheckInterval);
+            }
+
+            state.healthCheckInterval = setInterval(() => {
+                state.voicePeerConnections.forEach((session, peerId) => {
+                    const pc = session.pc;
+                    const connState = pc.connectionState;
+                    const iceState = pc.iceConnectionState;
+
+                    // Check for stale connections
+                    const timeSinceLastChange = Date.now() - session.lastStateChange;
+
+                    if (connState === 'disconnected' && timeSinceLastChange > 10000) {
+                        log(`🗣 [HEALTH] Stale connection detected for ${getName(peerId)}`, "warn");
+                        this.restartIce(peerId);
+                    } else if (connState === 'failed' && session.iceRestartCount === 0) {
+                        log(`🗣 [HEALTH] Failed connection, attempting repair for ${getName(peerId)}`, "warn");
+                        this.restartIce(peerId);
+                    } else if (iceState === 'checking' && timeSinceLastChange > 15000) {
+                        log(`🗣 [HEALTH] ICE stuck in checking state for ${getName(peerId)}`, "warn");
+                        this.restartIce(peerId);
+                    }
+                });
+            }, CONFIG.PEER_HEALTH_CHECK_INTERVAL);
+
+            log(`🗣 [HEALTH] Monitoring started`, "info");
         }
     }
 
@@ -1416,6 +1516,19 @@
             // Deduplicate by ID
             const uniqueMap = new Map();
             roster.forEach(user => uniqueMap.set(user.id, user));
+            
+            // Detect removed peers and clean them up
+            const newRosterIds = new Set(Array.from(uniqueMap.keys()));
+            state.currentRoster.forEach(oldUser => {
+                if (!newRosterIds.has(oldUser.id) && oldUser.id !== state.myId) {
+                    // Peer has left, clean up their connection
+                    if (state.voicePeerConnections.has(oldUser.id)) {
+                        log(`🗣 Peer ${getName(oldUser.id)} left, cleaning up`, "info");
+                        PeerConnectionManager.closePeer(oldUser.id);
+                    }
+                }
+            });
+            
             state.currentRoster = Array.from(uniqueMap.values());
             
             this.render();
@@ -1782,6 +1895,9 @@
 
                 // Connect signaling
                 SignalingManager.connect(state.currentRoomName, state.myUserName);
+                
+                // Start health monitoring
+                PeerConnectionManager.startHealthMonitoring();
             } catch (e) {
                 log(`Connection Failed: ${e.message}`, "err");
                 UIManager.setUIState('disconnected');
