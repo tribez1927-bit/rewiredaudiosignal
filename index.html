@@ -153,7 +153,7 @@
         input:focus { border-color: var(--accent); background: #333; }
 
         /* --- MAIN BUTTON --- */
-        #btn-main {
+        .btn-connect {
             background: var(--accent);
             color: white;
             border: none;
@@ -168,9 +168,83 @@
             letter-spacing: 1px;
             box-shadow: 0 4px 20px rgba(41, 121, 255, 0.4);
         }
-        #btn-main:active { transform: scale(0.98); }
-        #btn-main:disabled { opacity: 0.5; cursor: not-allowed; }
-        #btn-main.disconnect { background: var(--danger); box-shadow: 0 4px 20px rgba(255, 59, 48, 0.4); }
+        .btn-connect:active { transform: scale(0.98); }
+        .btn-connect:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        /* --- FLOATING DISCONNECT PANEL --- */
+        .disconnect-panel {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: rgba(30, 30, 30, 0.95);
+            backdrop-filter: blur(10px);
+            border-top: 1px solid var(--border);
+            box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.5);
+            z-index: 1000;
+            transform: translateY(calc(100% - 20px));
+            transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        
+        .disconnect-panel.expanded {
+            transform: translateY(0);
+        }
+        
+        .drag-handle {
+            padding: 8px 0 12px 0;
+            cursor: pointer;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            touch-action: none;
+            user-select: none;
+        }
+        
+        .drag-handle-bar {
+            width: 40px;
+            height: 4px;
+            background: var(--text-sub);
+            border-radius: 2px;
+            transition: all 0.2s;
+        }
+        
+        .drag-handle:hover .drag-handle-bar {
+            background: var(--text-main);
+            width: 50px;
+        }
+        
+        .btn-disconnect {
+            background: var(--danger);
+            color: white;
+            border: none;
+            padding: 18px;
+            margin: 0 16px 20px 16px;
+            border-radius: 18px;
+            font-size: 1rem;
+            font-weight: 700;
+            cursor: pointer;
+            width: calc(100% - 32px);
+            max-width: 400px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            transition: all 0.2s;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            box-shadow: 0 4px 20px rgba(255, 59, 48, 0.4);
+            margin-left: auto;
+            margin-right: auto;
+        }
+        
+        .btn-disconnect:active { 
+            transform: scale(0.98); 
+        }
+        
+        .btn-disconnect svg {
+            width: 20px;
+            height: 20px;
+        }
 
         /* --- AUDIO CONTROLS --- */
         .audio-controls {
@@ -340,7 +414,7 @@
             <input id="user" placeholder="Your Name" aria-label="Your Name">
         </div>
 
-        <button id="btn-main" aria-label="Connect to studio">Listen Live</button>
+        <button id="btn-connect" class="btn-connect" aria-label="Connect to studio">Listen Live</button>
 
         <div id="controls-panel" class="audio-controls hidden">
             <div class="slider-row">
@@ -397,6 +471,19 @@
         <div id="console"></div>
     </div>
 
+</div>
+
+<!-- Floating Disconnect Panel -->
+<div id="disconnect-panel" class="disconnect-panel" style="display:none">
+    <div id="drag-handle" class="drag-handle">
+        <div class="drag-handle-bar"></div>
+    </div>
+    <button id="btn-disconnect" class="btn-disconnect" aria-label="Disconnect from studio">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
+        </svg>
+        Disconnect
+    </button>
 </div>
 
 <div id="voice-container" style="display:none"></div>
@@ -487,7 +574,10 @@
         headerMeters: document.getElementById('header-meters'),
         connectedAs: document.getElementById('connected-as'),
         connectedAsName: document.getElementById('connected-as-name'),
-        btnMain: document.getElementById('btn-main'),
+        btnConnect: document.getElementById('btn-connect'),
+        btnDisconnect: document.getElementById('btn-disconnect'),
+        disconnectPanel: document.getElementById('disconnect-panel'),
+        dragHandle: document.getElementById('drag-handle'),
         btnMute: document.getElementById('btn-mute'),
         btnTalk: document.getElementById('btn-talk'),
         volSlider: document.getElementById('vol-slider'),
@@ -1796,8 +1886,8 @@
 
         static setUIState(newState) {
             if (newState === 'connecting') {
-                ui.btnMain.innerText = "Connecting...";
-                ui.btnMain.disabled = true;
+                ui.btnConnect.innerText = "Connecting...";
+                ui.btnConnect.disabled = true;
                 ui.setupPanel.style.opacity = "0.5";
             } else if (newState === 'connected') {
                 state.isConnected = true;
@@ -1814,10 +1904,9 @@
                 ui.controlsPanel.classList.remove('hidden');
                 ui.rosterCard.style.display = "flex";
                 ui.consoleCard.style.display = "flex";
+                ui.disconnectPanel.style.display = "block";
 
-                ui.btnMain.innerText = "Disconnect";
-                ui.btnMain.className = "disconnect";
-                ui.btnMain.disabled = false;
+                ui.btnConnect.style.display = "none";
                 
                 this.updateButtons();
                 SignalingManager.broadcastStatus();
@@ -1830,6 +1919,7 @@
                 ui.headerMeters.style.display = "none";
                 ui.networkStats.style.display = "none";
                 ui.connectedAs.style.display = "none";
+                ui.disconnectPanel.style.display = "none";
 
                 ui.setupPanel.classList.remove('hidden');
                 ui.setupPanel.style.opacity = "1";
@@ -1837,9 +1927,9 @@
                 ui.rosterCard.style.display = "none";
                 ui.consoleCard.style.display = "none";
 
-                ui.btnMain.innerText = "Listen Live";
-                ui.btnMain.className = "";
-                ui.btnMain.disabled = false;
+                ui.btnConnect.style.display = "block";
+                ui.btnConnect.innerText = "Listen Live";
+                ui.btnConnect.disabled = false;
             }
         }
 
@@ -1941,12 +2031,81 @@
 
     // ===== EVENT HANDLERS =====
 
-    ui.btnMain.addEventListener('click', async () => {
+    ui.btnConnect.addEventListener('click', async () => {
         if (!state.isConnected) {
             await ConnectionManager.connect();
-        } else {
-            ConnectionManager.disconnectAll();
         }
+    });
+
+    ui.btnDisconnect.addEventListener('click', () => {
+        ConnectionManager.disconnectAll();
+    });
+
+    // Drag handle for disconnect panel
+    let startY = 0;
+    let currentY = 0;
+    let isDragging = false;
+
+    ui.dragHandle.addEventListener('touchstart', (e) => {
+        startY = e.touches[0].clientY;
+        isDragging = true;
+        ui.disconnectPanel.style.transition = 'none';
+    });
+
+    ui.dragHandle.addEventListener('touchmove', (e) => {
+        if (!isDragging) return;
+        currentY = e.touches[0].clientY;
+        const deltaY = currentY - startY;
+        
+        if (deltaY > 0) {
+            // Dragging down
+            ui.disconnectPanel.style.transform = `translateY(calc(100% - 20px + ${Math.min(deltaY, 100)}px))`;
+        } else {
+            // Dragging up
+            ui.disconnectPanel.style.transform = `translateY(${Math.max(deltaY, -80)}px)`;
+        }
+    });
+
+    ui.dragHandle.addEventListener('touchend', (e) => {
+        if (!isDragging) return;
+        isDragging = false;
+        ui.disconnectPanel.style.transition = 'transform 0.3s cubic-bezier(0.4, 0, 0.2, 1)';
+        
+        const deltaY = currentY - startY;
+        if (deltaY > 50) {
+            // Collapsed
+            ui.disconnectPanel.classList.remove('expanded');
+            ui.disconnectPanel.style.transform = '';
+        } else if (deltaY < -30) {
+            // Expanded
+            ui.disconnectPanel.classList.add('expanded');
+            ui.disconnectPanel.style.transform = '';
+        } else {
+            // Return to current state
+            ui.disconnectPanel.style.transform = '';
+        }
+    });
+
+    // Click to toggle
+    ui.dragHandle.addEventListener('click', () => {
+        ui.disconnectPanel.classList.toggle('expanded');
+    });
+
+    // Auto-expand on scroll near bottom
+    let scrollTimeout;
+    window.addEventListener('scroll', () => {
+        if (!state.isConnected) return;
+        
+        clearTimeout(scrollTimeout);
+        scrollTimeout = setTimeout(() => {
+            const scrollHeight = document.documentElement.scrollHeight;
+            const scrollTop = window.scrollY;
+            const clientHeight = window.innerHeight;
+            
+            if (scrollTop + clientHeight >= scrollHeight - 50) {
+                ui.disconnectPanel.classList.add('expanded');
+            }
+        }, 100);
     });
 
     ui.btnTalk.addEventListener('click', () => {
