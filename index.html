@@ -1614,7 +1614,7 @@
                     if (state.nameWasEmpty && !state.hasRenamedToMonitor) {
                         ConnectionManager.disconnectAll();
                         log("🚫 Access Denied: Name Required", "err");
-                        alert("Name Required for Remote Connections.");
+                        alert("Participant identifier required.\n\nYou must enter your name to connect remotely to the studio.");
                     }
                 }, CONFIG.VERIFICATION_TIMEOUT);
             } else {
