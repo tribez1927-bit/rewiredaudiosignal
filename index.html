@@ -1535,7 +1535,8 @@
         }
 
         static checkIPMatch() {
-            if (state.hasRenamedToMonitor) return;
+            // Only check IP match if user didn't provide a name
+            if (!state.nameWasEmpty || state.hasRenamedToMonitor) return;
             
             // Filter to only local/private IPs
             const myLocalIPs = Array.from(state.myIPs).filter(ip => this.isLocalIP(ip));
