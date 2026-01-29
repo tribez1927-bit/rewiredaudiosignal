@@ -2069,6 +2069,19 @@
                 q.packetLoss > 0 ? `${q.packetLoss.toFixed(1)}%` : '--';
             document.getElementById('stat-jitter').innerText =
                 q.jitter > 0 ? `${q.jitter.toFixed(0)}ms` : '--';
+            
+            // Also update pill stats
+            const pillLatency = document.getElementById('stat-latency-pill');
+            const pillLoss = document.getElementById('stat-loss-pill');
+            const pillJitter = document.getElementById('stat-jitter-pill');
+            
+            if (pillLatency) pillLatency.innerText = document.getElementById('stat-latency').innerText;
+            if (pillLoss) pillLoss.innerText = document.getElementById('stat-loss').innerText;
+            if (pillJitter) pillJitter.innerText = document.getElementById('stat-jitter').innerText;
+            
+            // Show stats row
+            const statsRow = document.getElementById('status-stats-row');
+            if (statsRow) statsRow.classList.add('visible');
         }
     }
 
