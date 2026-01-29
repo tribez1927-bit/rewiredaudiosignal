@@ -48,6 +48,8 @@
             border-radius: 30px;
             display: flex;
             align-items: center;
+            flex-wrap: wrap;
+            justify-content: center;
             gap: 12px;
             border: 1px solid var(--border);
             box-shadow: 0 4px 15px rgba(0,0,0,0.4);
@@ -352,6 +354,11 @@
         /* Roster Specific Meter Alignment */
         .meter-column-fixed { width: 22px; height: 22px; display: flex; justify-content: center; align-items: center; }
 
+        /* Horizontal roster meters */
+        .roster-meters-horizontal { flex: 1; display: flex; flex-direction: column; gap: 2px; margin: 0 12px; min-width: 40px; }
+        .h-meter-row { height: 4px; background: #333; border-radius: 2px; position: relative; overflow: hidden; width: 100%; }
+        .h-meter-fill { height: 100%; position: absolute; left: 0; background: var(--success); width: 0%; transition: width 0.08s ease-out; }
+
         /* --- CONSOLE --- */
         #console-card { display: none; flex: 1; min-height: 0; }
         #console {
@@ -372,17 +379,19 @@
         /* Network quality indicator */
         .network-stats {
             display: flex;
-            gap: 12px;
-            font-size: 0.7rem;
+            gap: 10px;
+            font-size: 0.6rem;
             color: var(--text-sub);
             justify-content: center;
-            padding: 8px 0;
+            width: 100%;
+            padding: 0;
+            margin-top: -4px;
         }
         .network-stat {
             display: flex;
-            flex-direction: column;
+            flex-direction: row;
             align-items: center;
-            gap: 2px;
+            gap: 3px;
         }
         .network-stat-label { font-weight: 600; }
         .network-stat-value { font-family: monospace; }
@@ -401,6 +410,20 @@
         <div id="header-meters" class="mini-meters" style="display:none; margin-left: 8px;">
             <div class="mini-meter-col"><div id="head-m-l" class="mini-meter-fill"></div></div>
             <div class="mini-meter-col"><div id="head-m-r" class="mini-meter-fill"></div></div>
+        </div>
+        <div class="network-stats" id="network-stats" style="display:none">
+            <div class="network-stat">
+                <span class="network-stat-label">Latency</span>
+                <span class="network-stat-value" id="stat-latency">--</span>
+            </div>
+            <div class="network-stat">
+                <span class="network-stat-label">Loss</span>
+                <span class="network-stat-value" id="stat-loss">--</span>
+            </div>
+            <div class="network-stat">
+                <span class="network-stat-label">Jitter</span>
+                <span class="network-stat-value" id="stat-jitter">--</span>
+            </div>
         </div>
     </div>
 
@@ -438,20 +461,6 @@
                 </button>
             </div>
             
-            <div class="network-stats" id="network-stats" style="display:none">
-                <div class="network-stat">
-                    <span class="network-stat-label">Latency</span>
-                    <span class="network-stat-value" id="stat-latency">--</span>
-                </div>
-                <div class="network-stat">
-                    <span class="network-stat-label">Loss</span>
-                    <span class="network-stat-value" id="stat-loss">--</span>
-                </div>
-                <div class="network-stat">
-                    <span class="network-stat-label">Jitter</span>
-                    <span class="network-stat-value" id="stat-jitter">--</span>
-                </div>
-            </div>
         </div>
     </div>
 
@@ -767,8 +776,8 @@
                         const fillR = document.getElementById(`mr-${rosterId}`);
                         if (fillL && fillR) {
                             const percentage = Math.min(100, (avg / 50) * 100);
-                            fillL.style.height = percentage + "%";
-                            fillR.style.height = percentage + "%";
+                            fillL.style.width = percentage + "%";
+                            fillR.style.width = percentage + "%";
                         }
                     }
                     
@@ -1679,32 +1688,17 @@
                 const isStudioMonitor = user.name === "Studio Monitor";
                 let displayName = isMe ? state.myUserName + " (You)" : user.name;
 
-                // Build left section
-                let leftArea = '';
-                if (isSender) {
-                    leftArea = `
-                        <div class="meter-column-fixed">
-                            <div class="mini-meters">
-                                <div class="mini-meter-col"><div id="ml-${user.id}" class="mini-meter-fill"></div></div>
-                                <div class="mini-meter-col"><div id="mr-${user.id}" class="mini-meter-fill"></div></div>
-                            </div>
-                        </div>`;
-                } else {
-                    const muteClass = (user.isMusicEnabled !== false) ? 'active' : 'inactive';
-                    leftArea = `<div class="icon-box ${muteClass}">${ICONS.HEADPHONES}</div>`;
-                }
-
                 // Status indicator
                 const isActive = isSender ? user.isMusicEnabled : (user.isMicEnabled !== false);
                 const statusClass = isActive ? 'active' : 'inactive';
-                
+
                 // Connection status for voice peers
                 let statusBadge = '';
                 if (!isMe && !isSender) {
                     const connState = getConnectionState(user.id);
                     let statusText = '';
                     let statusClass = '';
-                    
+
                     if (connState === 'connected') {
                         statusText = 'connected';
                         statusClass = 'connected';
@@ -1715,24 +1709,39 @@
                         statusText = 'reconnecting';
                         statusClass = 'failed';
                     }
-                    
+
                     if (statusText) {
                         statusBadge = `<span class="roster-status ${statusClass}">${statusText}</span>`;
                     }
                 }
-                
+
                 // Apply orange color to Studio stream and Studio Monitor
                 const nameClass = (isSender || isStudioMonitor) ? 'roster-name-highlight' : 'roster-name';
-                
+
                 const el = document.createElement('div');
                 el.className = 'roster-item';
-                el.innerHTML = `
-                    <div class="roster-left">
-                        ${leftArea}
-                        <span class="${nameClass}">${displayName}${statusBadge}</span>
-                    </div>
-                    <div id="status-icon-${user.id}" class="icon-box ${statusClass}">${ICONS.MIC}</div>
-                `;
+
+                if (isSender) {
+                    // Broadcaster: [name] [horizontal meters] [mic icon]
+                    el.innerHTML = `
+                        <span class="${nameClass}">${displayName}</span>
+                        <div class="roster-meters-horizontal">
+                            <div class="h-meter-row"><div id="ml-${user.id}" class="h-meter-fill"></div></div>
+                            <div class="h-meter-row"><div id="mr-${user.id}" class="h-meter-fill"></div></div>
+                        </div>
+                        <div id="status-icon-${user.id}" class="icon-box ${statusClass}">${ICONS.MIC}</div>
+                    `;
+                } else {
+                    // Non-broadcaster: [headphones + name] ... [mic icon]
+                    const muteClass = (user.isMusicEnabled !== false) ? 'active' : 'inactive';
+                    el.innerHTML = `
+                        <div class="roster-left">
+                            <div class="icon-box ${muteClass}">${ICONS.HEADPHONES}</div>
+                            <span class="${nameClass}">${displayName}${statusBadge}</span>
+                        </div>
+                        <div id="status-icon-${user.id}" class="icon-box ${statusClass}">${ICONS.MIC}</div>
+                    `;
+                }
                 ui.rosterList.appendChild(el);
             });
         }
@@ -2033,6 +2042,7 @@
 
     ui.btnConnect.addEventListener('click', async () => {
         if (!state.isConnected) {
+            ui.consoleCard.style.display = "flex";
             await ConnectionManager.connect();
         }
     });
@@ -2091,20 +2101,26 @@
         ui.disconnectPanel.classList.toggle('expanded');
     });
 
-    // Auto-expand on scroll near bottom
+    // Auto-expand on scroll near bottom, collapse on scroll up
     let scrollTimeout;
+    let lastScrollTop = window.scrollY;
     window.addEventListener('scroll', () => {
         if (!state.isConnected) return;
-        
+
         clearTimeout(scrollTimeout);
         scrollTimeout = setTimeout(() => {
             const scrollHeight = document.documentElement.scrollHeight;
             const scrollTop = window.scrollY;
             const clientHeight = window.innerHeight;
-            
-            if (scrollTop + clientHeight >= scrollHeight - 50) {
+
+            if (scrollTop < lastScrollTop) {
+                // Scrolling up — collapse
+                ui.disconnectPanel.classList.remove('expanded');
+            } else if (scrollTop + clientHeight >= scrollHeight - 50) {
+                // At bottom — expand
                 ui.disconnectPanel.classList.add('expanded');
             }
+            lastScrollTop = scrollTop;
         }, 100);
     });
 
