@@ -258,6 +258,7 @@
 
         /* Slider */
         .slider-row { display: flex; align-items: center; gap: 16px; }
+        .voice-slider-row { margin-top: 8px; }
         input[type=range] {
             -webkit-appearance: none;
             width: 100%;
@@ -446,6 +447,12 @@
                 <svg width="18" height="18" fill="#666" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 9v6h4l5 5V4L7 9H3zM16.5 12c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></svg>
             </div>
 
+            <div class="slider-row voice-slider-row">
+                <svg width="18" height="18" fill="#666" viewBox="0 0 24 24" aria-hidden="true"><path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/></svg>
+                <input type="range" id="voice-vol-slider" min="0" max="1" step="0.01" value="0.8" aria-label="Voice Volume">
+                <svg width="18" height="18" fill="#666" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/><path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/></svg>
+            </div>
+
             <div class="toggles-row">
                 <button id="btn-mute" class="circle-btn active" aria-label="Toggle mute">
                     <svg id="icon-vol" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77zm-4 0h-2.5l-5 5H0v6h2.5l5 5H10V3.23z"/></svg>
@@ -563,6 +570,7 @@
         currentRoomName: "",
         myUserName: "",
         lastVolume: 0.8,
+        lastVoiceVolume: 0.8,
         myIPs: new Set(),
         senderIPs: new Set(),
         nameWasEmpty: false,
@@ -590,6 +598,7 @@
         btnMute: document.getElementById('btn-mute'),
         btnTalk: document.getElementById('btn-talk'),
         volSlider: document.getElementById('vol-slider'),
+        voiceVolSlider: document.getElementById('voice-vol-slider'),
         logEl: document.getElementById('console'),
         btnClearConsole: document.getElementById('btn-clear-console'),
         setupPanel: document.getElementById('setup-panel'),
@@ -671,8 +680,16 @@
                 });
                 
                 state.masterGain = state.audioCtx.createGain();
-                state.masterGain.gain.value = state.lastVolume;
+                state.masterGain.gain.value = 1.0;
                 state.masterGain.connect(state.audioCtx.destination);
+
+                state.studioGain = state.audioCtx.createGain();
+                state.studioGain.gain.value = state.lastVolume;
+                state.studioGain.connect(state.masterGain);
+
+                state.voiceGain = state.audioCtx.createGain();
+                state.voiceGain.gain.value = state.lastVoiceVolume;
+                state.voiceGain.connect(state.masterGain);
                 
                 await state.audioCtx.resume();
                 log("🎵 Audio Context Ready", "success");
@@ -740,20 +757,20 @@
             }
         }
 
-        static monitorAndRouteAudio(stream, label, rosterId, shouldRoute = true) {
+        static monitorAndRouteAudio(stream, label, rosterId, shouldRoute = true, targetGain = null) {
             if (!state.audioCtx || !state.masterGain) return;
-            
+
             try {
                 const src = state.audioCtx.createMediaStreamSource(stream);
                 const analyzer = state.audioCtx.createAnalyser();
                 analyzer.fftSize = 256;
                 analyzer.smoothingTimeConstant = 0.8;
-                
+
                 src.connect(analyzer);
-                
+
                 // Route to speakers (but not local mic to avoid feedback)
                 if (shouldRoute) {
-                    analyzer.connect(state.masterGain);
+                    analyzer.connect(targetGain || state.masterGain);
                 }
 
                 const data = new Uint8Array(analyzer.frequencyBinCount);
@@ -800,12 +817,21 @@
         }
 
         static setVolume(value, immediate = false) {
-            if (!state.masterGain) return;
-            
+            if (!state.studioGain) return;
+
             if (immediate) {
-                state.masterGain.gain.value = value;
+                state.studioGain.gain.value = value;
             } else {
-                state.masterGain.gain.setTargetAtTime(value, state.audioCtx.currentTime, 0.05);
+                state.studioGain.gain.setTargetAtTime(value, state.audioCtx.currentTime, 0.05);
+            }
+        }
+
+        static setVoiceVolume(value, immediate = false) {
+            if (!state.voiceGain) return;
+            if (immediate) {
+                state.voiceGain.gain.value = value;
+            } else {
+                state.voiceGain.gain.setTargetAtTime(value, state.audioCtx.currentTime, 0.05);
             }
         }
 
@@ -852,20 +878,20 @@
                 iceRestartCount: 0
             };
 
-            // Add transceivers
-            pc.addTransceiver('audio', { direction: 'sendrecv' });
-
-            // Add local tracks
+            // Add local tracks (addTrack implicitly creates a sendrecv transceiver)
             if (state.localVoiceStream) {
                 state.localVoiceStream.getTracks().forEach(track => {
                     pc.addTrack(track, state.localVoiceStream);
                 });
+            } else {
+                // No mic yet; create a recvonly transceiver so we can still receive
+                pc.addTransceiver('audio', { direction: 'recvonly' });
             }
 
             // Event handlers
             pc.ontrack = (e) => {
                 log(`🗣 [VOICE] Audio from ${getName(peerId)}`, "success");
-                AudioManager.monitorAndRouteAudio(e.streams[0], `Voice ${peerId.substring(0, 4)}`, peerId, true);
+                AudioManager.monitorAndRouteAudio(e.streams[0], `Voice ${peerId.substring(0, 4)}`, peerId, true, state.voiceGain);
             };
 
             pc.onicecandidate = (e) => {
@@ -1262,7 +1288,7 @@
                 state.studioPC.ontrack = (e) => {
                     log("🎵 [STUDIO] Stream Active", "success");
                     AudioManager.startHeaderVisuals(e.streams[0]);
-                    AudioManager.monitorAndRouteAudio(e.streams[0], "Studio Stream", state.broadcasterId, true);
+                    AudioManager.monitorAndRouteAudio(e.streams[0], "Studio Stream", state.broadcasterId, true, state.studioGain);
                     this.startStats();
                 };
 
@@ -2145,6 +2171,14 @@
         
         state.isTalking = !state.isTalking;
         state.localVoiceStream.getAudioTracks().forEach(t => t.enabled = state.isTalking);
+        // Propagate to all peer connection senders for robustness
+        state.voicePeerConnections.forEach((session) => {
+            session.pc.getSenders().forEach(sender => {
+                if (sender.track && sender.track.kind === 'audio') {
+                    sender.track.enabled = state.isTalking;
+                }
+            });
+        });
         log(state.isTalking ? "🎙 Mic LIVE" : "🎙 Mic Muted", "mic");
         UIManager.updateButtons();
         SignalingManager.broadcastStatus();
@@ -2159,6 +2193,12 @@
             state.lastVolume = val;
         }
         UIManager.updateButtons();
+    });
+
+    ui.voiceVolSlider.addEventListener('input', (e) => {
+        const val = parseFloat(e.target.value);
+        state.lastVoiceVolume = val;
+        AudioManager.setVoiceVolume(val);
     });
 
     ui.btnMute.addEventListener('click', () => {
