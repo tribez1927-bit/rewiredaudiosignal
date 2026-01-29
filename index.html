@@ -1745,7 +1745,36 @@
                 const isStudioMonitor = user.name === "Studio Monitor";
                 let displayName = isMe ? state.myUserName + " (You)" : user.name;
 
-                // Build left section
+                // Status indicator - MOVED BEFORE isSender block
+                const isActive = isSender ? user.isMusicEnabled : (user.isMicEnabled !== false);
+                const statusClass = isActive ? 'active' : 'inactive';
+                
+                // Connection status for voice peers - MOVED BEFORE isSender block
+                let statusBadge = '';
+                if (!isMe && !isSender) {
+                    const connState = getConnectionState(user.id);
+                    let statusText = '';
+                    let badgeStatusClass = '';
+                    
+                    if (connState === 'connected') {
+                        statusText = 'connected';
+                        badgeStatusClass = 'connected';
+                    } else if (connState === 'connecting' || connState === 'new') {
+                        statusText = 'connecting';
+                        badgeStatusClass = 'connecting';
+                    } else if (connState === 'failed' || connState === 'disconnected') {
+                        statusText = 'reconnecting';
+                        badgeStatusClass = 'failed';
+                    }
+                    
+                    if (statusText) {
+                        statusBadge = `<span class="roster-status ${badgeStatusClass}">${statusText}</span>`;
+                    }
+                }
+                
+                // Apply orange color to Studio stream and Studio Monitor - MOVED BEFORE isSender block
+                const nameClass = (isSender || isStudioMonitor) ? 'roster-name-highlight' : 'roster-name';
+
                 // Build roster item
                 if (isSender) {
                     // Sender with horizontal meters
@@ -1775,10 +1804,6 @@
                 let leftArea = '';
                 const muteClass = (user.isMusicEnabled !== false) ? 'active' : 'inactive';
                 leftArea = `<div class="icon-box ${muteClass}">${ICONS.HEADPHONES}</div>`;
-
-                // Status indicator
-                const isActive = isSender ? user.isMusicEnabled : (user.isMicEnabled !== false);
-                const statusClass = isActive ? 'active' : 'inactive';
                 
                 // Connection status for voice peers
                 let statusBadge = '';
