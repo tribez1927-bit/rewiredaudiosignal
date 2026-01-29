@@ -556,6 +556,8 @@
         audioCtx: null,
         studioPC: null,
         masterGain: null,
+        studioGain: null,
+        voiceGain: null,
         statsInterval: null,
         healthCheckInterval: null,
         meterIntervals: new Map(),
@@ -797,7 +799,18 @@
                             fillR.style.width = percentage + "%";
                         }
                     }
-                    
+
+                    // Also update header meters for studio stream
+                    if (label === "Studio Stream") {
+                        const headL = document.getElementById('head-m-l');
+                        const headR = document.getElementById('head-m-r');
+                        if (headL && headR) {
+                            const pct = Math.min(100, (avg / 50) * 100);
+                            headL.style.height = pct + "%";
+                            headR.style.height = pct + "%";
+                        }
+                    }
+
                     // Occasional logging (not for studio to reduce spam)
                     frameCount++;
                     if (!label.includes("Studio") && avg > 25 && frameCount % 50 === 0) {
@@ -853,6 +866,8 @@
             }
             
             state.masterGain = null;
+            state.studioGain = null;
+            state.voiceGain = null;
         }
     }
 
@@ -1287,7 +1302,6 @@
 
                 state.studioPC.ontrack = (e) => {
                     log("🎵 [STUDIO] Stream Active", "success");
-                    AudioManager.startHeaderVisuals(e.streams[0]);
                     AudioManager.monitorAndRouteAudio(e.streams[0], "Studio Stream", state.broadcasterId, true, state.studioGain);
                     this.startStats();
                 };
