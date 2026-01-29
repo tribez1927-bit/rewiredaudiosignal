@@ -348,77 +348,6 @@
         .mini-meters { display: flex; gap: 3px; height: 14px; align-items: flex-end; }
         .mini-meter-col { width: 4px; height: 100%; background: #333; border-radius: 2px; position: relative; overflow: hidden; }
         .mini-meter-fill { width: 100%; position: absolute; bottom: 0; background: var(--success); height: 0%; transition: height 0.08s ease-out; }
-
-        /* Status pill with stats row */
-        .status-pill {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            padding: 10px 16px;
-            gap: 4px;
-        }
-        
-        .status-main-row {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-        }
-        
-        .status-stats-row {
-            display: none;
-            font-size: 0.7rem;
-            color: var(--text-sub);
-            white-space: nowrap;
-        }
-        
-        .status-stats-row.visible {
-            display: block;
-        }
-        
-        .status-stat-item {
-            display: inline;
-            margin: 0 6px;
-        }
-        
-        /* Horizontal meters for streaming roster */
-        .roster-left-sender {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            flex: 1;
-            min-width: 0;
-        }
-        
-        .roster-name-container {
-            flex-shrink: 0;
-            min-width: 120px;
-        }
-        
-        .roster-meters-horizontal {
-            display: flex;
-            gap: 4px;
-            height: 20px;
-            align-items: center;
-            flex: 1;
-            margin: 0 16px;
-            min-width: 80px;
-        }
-        
-        .roster-meter-bar {
-            flex: 1;
-            height: 100%;
-            background: #333;
-            border-radius: 3px;
-            position: relative;
-            overflow: hidden;
-        }
-        
-        .roster-meter-fill-horizontal {
-            width: 0%;
-            height: 100%;
-            background: var(--success);
-            transition: width 0.08s ease-out;
-        }
         
         /* Roster Specific Meter Alignment */
         .meter-column-fixed { width: 22px; height: 22px; display: flex; justify-content: center; align-items: center; }
@@ -464,22 +393,14 @@
 <div class="app-container">
     
     <div class="status-pill">
-        <div class="status-main-row">
-            <div id="status-dot" class="status-dot"></div>
-            <span id="status-text" class="status-text">READY</span>
-            <span id="bitrate" class="status-bitrate" style="display:none">0 kbps</span>
-            <span id="quality-badge" class="status-quality" style="display:none">Good</span>
-            
-            <div id="header-meters" class="mini-meters" style="display:none; margin-left: 8px;">
-                <div class="mini-meter-col"><div id="head-m-l" class="mini-meter-fill"></div></div>
-                <div class="mini-meter-col"><div id="head-m-r" class="mini-meter-fill"></div></div>
-            </div>
-        </div>
+        <div id="status-dot" class="status-dot"></div>
+        <span id="status-text" class="status-text">READY</span>
+        <span id="bitrate" class="status-bitrate" style="display:none">0 kbps</span>
+        <span id="quality-badge" class="status-quality" style="display:none">Good</span>
         
-        <div id="status-stats-row" class="status-stats-row">
-            <span class="status-stat-item">Latency: <span id="stat-latency-pill">--</span></span>
-            <span class="status-stat-item">Loss: <span id="stat-loss-pill">--</span></span>
-            <span class="status-stat-item">Jitter: <span id="stat-jitter-pill">--</span></span>
+        <div id="header-meters" class="mini-meters" style="display:none; margin-left: 8px;">
+            <div class="mini-meter-col"><div id="head-m-l" class="mini-meter-fill"></div></div>
+            <div class="mini-meter-col"><div id="head-m-r" class="mini-meter-fill"></div></div>
         </div>
     </div>
 
@@ -517,7 +438,20 @@
                 </button>
             </div>
             
-
+            <div class="network-stats" id="network-stats" style="display:none">
+                <div class="network-stat">
+                    <span class="network-stat-label">Latency</span>
+                    <span class="network-stat-value" id="stat-latency">--</span>
+                </div>
+                <div class="network-stat">
+                    <span class="network-stat-label">Loss</span>
+                    <span class="network-stat-value" id="stat-loss">--</span>
+                </div>
+                <div class="network-stat">
+                    <span class="network-stat-label">Jitter</span>
+                    <span class="network-stat-value" id="stat-jitter">--</span>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -1745,65 +1679,24 @@
                 const isStudioMonitor = user.name === "Studio Monitor";
                 let displayName = isMe ? state.myUserName + " (You)" : user.name;
 
-                // Status indicator - MOVED BEFORE isSender block
+                // Build left section
+                let leftArea = '';
+                if (isSender) {
+                    leftArea = `
+                        <div class="meter-column-fixed">
+                            <div class="mini-meters">
+                                <div class="mini-meter-col"><div id="ml-${user.id}" class="mini-meter-fill"></div></div>
+                                <div class="mini-meter-col"><div id="mr-${user.id}" class="mini-meter-fill"></div></div>
+                            </div>
+                        </div>`;
+                } else {
+                    const muteClass = (user.isMusicEnabled !== false) ? 'active' : 'inactive';
+                    leftArea = `<div class="icon-box ${muteClass}">${ICONS.HEADPHONES}</div>`;
+                }
+
+                // Status indicator
                 const isActive = isSender ? user.isMusicEnabled : (user.isMicEnabled !== false);
                 const statusClass = isActive ? 'active' : 'inactive';
-                
-                // Connection status for voice peers - MOVED BEFORE isSender block
-                let statusBadge = '';
-                if (!isMe && !isSender) {
-                    const connState = getConnectionState(user.id);
-                    let statusText = '';
-                    let badgeStatusClass = '';
-                    
-                    if (connState === 'connected') {
-                        statusText = 'connected';
-                        badgeStatusClass = 'connected';
-                    } else if (connState === 'connecting' || connState === 'new') {
-                        statusText = 'connecting';
-                        badgeStatusClass = 'connecting';
-                    } else if (connState === 'failed' || connState === 'disconnected') {
-                        statusText = 'reconnecting';
-                        badgeStatusClass = 'failed';
-                    }
-                    
-                    if (statusText) {
-                        statusBadge = `<span class="roster-status ${badgeStatusClass}">${statusText}</span>`;
-                    }
-                }
-                
-                // Apply orange color to Studio stream and Studio Monitor - MOVED BEFORE isSender block
-                const nameClass = (isSender || isStudioMonitor) ? 'roster-name-highlight' : 'roster-name';
-
-                // Build roster item
-                if (isSender) {
-                    // Sender with horizontal meters
-                    const el = document.createElement('div');
-                    el.className = 'roster-item';
-                    el.innerHTML = `
-                        <div class="roster-left-sender">
-                            <div class="roster-name-container">
-                                <span class="${nameClass}">${displayName}${statusBadge}</span>
-                            </div>
-                            <div class="roster-meters-horizontal">
-                                <div class="roster-meter-bar">
-                                    <div id="ml-${user.id}" class="roster-meter-fill-horizontal"></div>
-                                </div>
-                                <div class="roster-meter-bar">
-                                    <div id="mr-${user.id}" class="roster-meter-fill-horizontal"></div>
-                                </div>
-                            </div>
-                        </div>
-                        <div id="status-icon-${user.id}" class="icon-box ${statusClass}">${ICONS.MIC}</div>
-                    `;
-                    ui.rosterList.appendChild(el);
-                    return; // Skip normal rendering below
-                }
-                
-                // Non-sender (receiver)
-                let leftArea = '';
-                const muteClass = (user.isMusicEnabled !== false) ? 'active' : 'inactive';
-                leftArea = `<div class="icon-box ${muteClass}">${ICONS.HEADPHONES}</div>`;
                 
                 // Connection status for voice peers
                 let statusBadge = '';
@@ -2069,19 +1962,6 @@
                 q.packetLoss > 0 ? `${q.packetLoss.toFixed(1)}%` : '--';
             document.getElementById('stat-jitter').innerText =
                 q.jitter > 0 ? `${q.jitter.toFixed(0)}ms` : '--';
-            
-            // Also update pill stats
-            const pillLatency = document.getElementById('stat-latency-pill');
-            const pillLoss = document.getElementById('stat-loss-pill');
-            const pillJitter = document.getElementById('stat-jitter-pill');
-            
-            if (pillLatency) pillLatency.innerText = document.getElementById('stat-latency').innerText;
-            if (pillLoss) pillLoss.innerText = document.getElementById('stat-loss').innerText;
-            if (pillJitter) pillJitter.innerText = document.getElementById('stat-jitter').innerText;
-            
-            // Show stats row
-            const statsRow = document.getElementById('status-stats-row');
-            if (statsRow) statsRow.classList.add('visible');
         }
     }
 
@@ -2153,11 +2033,6 @@
 
     ui.btnConnect.addEventListener('click', async () => {
         if (!state.isConnected) {
-            // Show console immediately
-            if (ui.consoleCard) {
-                ui.consoleCard.style.display = 'flex';
-            }
-            
             await ConnectionManager.connect();
         }
     });
@@ -2217,14 +2092,9 @@
     });
 
     // Auto-expand on scroll near bottom
-    let lastScrollY = window.scrollY;
     let scrollTimeout;
-    
     window.addEventListener('scroll', () => {
         if (!state.isConnected) return;
-        
-        const currentScrollY = window.scrollY;
-        const isScrollingUp = currentScrollY < lastScrollY;
         
         clearTimeout(scrollTimeout);
         scrollTimeout = setTimeout(() => {
@@ -2232,17 +2102,10 @@
             const scrollTop = window.scrollY;
             const clientHeight = window.innerHeight;
             
-            // Hide when scrolling up (not at bottom)
-            if (isScrollingUp && scrollTop < scrollHeight - clientHeight - 100) {
-                ui.disconnectPanel.classList.remove('expanded');
-            }
-            // Show when near bottom
-            else if (scrollTop + clientHeight >= scrollHeight - 50) {
+            if (scrollTop + clientHeight >= scrollHeight - 50) {
                 ui.disconnectPanel.classList.add('expanded');
             }
         }, 100);
-        
-        lastScrollY = currentScrollY;
     });
 
     ui.btnTalk.addEventListener('click', () => {
@@ -2330,5 +2193,3 @@
 </script>
 </body>
 </html>
-
-
