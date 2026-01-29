@@ -1768,7 +1768,7 @@
                         <div id="status-icon-${user.id}" class="icon-box ${statusClass}">${ICONS.MIC}</div>
                     `;
                     ui.rosterList.appendChild(el);
-                    continue; // Skip normal rendering below
+                    return; // Skip normal rendering below
                 }
                 
                 // Non-sender (receiver)
