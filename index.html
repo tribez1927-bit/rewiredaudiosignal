@@ -53,20 +53,20 @@
             box-shadow: 0 4px 15px rgba(0,0,0,0.4);
             margin-bottom: 10px;
         }
-        .status-dot { 
-            width: 8px; 
-            height: 8px; 
-            border-radius: 50%; 
-            background: #666; 
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #666;
             transition: background 0.3s;
         }
-        .status-dot.on { 
-            background: var(--success); 
-            box-shadow: 0 0 10px var(--success); 
+        .status-dot.on {
+            background: var(--success);
+            box-shadow: 0 0 10px var(--success);
             animation: pulse 2s infinite;
         }
-        .status-dot.warn { 
-            background: var(--warn); 
+        .status-dot.warn {
+            background: var(--warn);
             box-shadow: 0 0 10px var(--warn);
             animation: pulse 1s infinite;
         }
@@ -76,18 +76,18 @@
             50% { opacity: 0.5; }
         }
         
-        .status-text { 
-            font-size: 0.85rem; 
-            font-weight: 700; 
-            letter-spacing: 0.5px; 
-            color: var(--text-main); 
+        .status-text {
+            font-size: 0.85rem;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+            color: var(--text-main);
         }
-        .status-bitrate { 
-            font-family: monospace; 
-            font-size: 0.75rem; 
-            color: var(--text-sub); 
-            border-left: 1px solid #555; 
-            padding-left: 12px; 
+        .status-bitrate {
+            font-family: monospace;
+            font-size: 0.75rem;
+            color: var(--text-sub);
+            border-left: 1px solid #555;
+            padding-left: 12px;
         }
         .status-quality {
             font-size: 0.7rem;
@@ -237,8 +237,8 @@
             margin-right: auto;
         }
         
-        .btn-disconnect:active { 
-            transform: scale(0.98); 
+        .btn-disconnect:active {
+            transform: scale(0.98);
         }
         
         .btn-disconnect svg {
@@ -320,14 +320,14 @@
         .roster-item:hover { background: rgba(255,255,255,0.05); }
         .roster-left { display: flex; align-items: center; gap: 14px; }
         .roster-name { font-weight: 600; font-size: 0.95rem; color: #eee; }
-        .roster-name-highlight { 
-            font-weight: 600; 
-            font-size: 0.95rem; 
-            color: var(--warn); 
+        .roster-name-highlight {
+            font-weight: 600;
+            font-size: 0.95rem;
+            color: var(--warn);
         }
-        .roster-status { 
-            font-size: 0.7rem; 
-            color: var(--text-sub); 
+        .roster-status {
+            font-size: 0.7rem;
+            color: var(--text-sub);
             margin-left: 8px;
             padding: 2px 6px;
             border-radius: 6px;
@@ -348,6 +348,77 @@
         .mini-meters { display: flex; gap: 3px; height: 14px; align-items: flex-end; }
         .mini-meter-col { width: 4px; height: 100%; background: #333; border-radius: 2px; position: relative; overflow: hidden; }
         .mini-meter-fill { width: 100%; position: absolute; bottom: 0; background: var(--success); height: 0%; transition: height 0.08s ease-out; }
+
+        /* Status pill with stats row */
+        .status-pill {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 10px 16px;
+            gap: 4px;
+        }
+        
+        .status-main-row {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        
+        .status-stats-row {
+            display: none;
+            font-size: 0.7rem;
+            color: var(--text-sub);
+            white-space: nowrap;
+        }
+        
+        .status-stats-row.visible {
+            display: block;
+        }
+        
+        .status-stat-item {
+            display: inline;
+            margin: 0 6px;
+        }
+        
+        /* Horizontal meters for streaming roster */
+        .roster-left-sender {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex: 1;
+            min-width: 0;
+        }
+        
+        .roster-name-container {
+            flex-shrink: 0;
+            min-width: 120px;
+        }
+        
+        .roster-meters-horizontal {
+            display: flex;
+            gap: 4px;
+            height: 20px;
+            align-items: center;
+            flex: 1;
+            margin: 0 16px;
+            min-width: 80px;
+        }
+        
+        .roster-meter-bar {
+            flex: 1;
+            height: 100%;
+            background: #333;
+            border-radius: 3px;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .roster-meter-fill-horizontal {
+            width: 0%;
+            height: 100%;
+            background: var(--success);
+            transition: width 0.08s ease-out;
+        }
         
         /* Roster Specific Meter Alignment */
         .meter-column-fixed { width: 22px; height: 22px; display: flex; justify-content: center; align-items: center; }
@@ -361,9 +432,9 @@
         }
         #console::-webkit-scrollbar { width: 6px; }
         #console::-webkit-scrollbar-thumb { background: #333; border-radius: 3px; }
-        .log-err { color: var(--danger); } 
-        .log-mic { color: #d63aff; } 
-        .log-vol { color: var(--success); } 
+        .log-err { color: var(--danger); }
+        .log-mic { color: #d63aff; }
+        .log-vol { color: var(--success); }
         .log-sys { color: var(--accent); }
         .log-warn { color: var(--warn); }
 
@@ -393,14 +464,22 @@
 <div class="app-container">
     
     <div class="status-pill">
-        <div id="status-dot" class="status-dot"></div>
-        <span id="status-text" class="status-text">READY</span>
-        <span id="bitrate" class="status-bitrate" style="display:none">0 kbps</span>
-        <span id="quality-badge" class="status-quality" style="display:none">Good</span>
+        <div class="status-main-row">
+            <div id="status-dot" class="status-dot"></div>
+            <span id="status-text" class="status-text">READY</span>
+            <span id="bitrate" class="status-bitrate" style="display:none">0 kbps</span>
+            <span id="quality-badge" class="status-quality" style="display:none">Good</span>
+            
+            <div id="header-meters" class="mini-meters" style="display:none; margin-left: 8px;">
+                <div class="mini-meter-col"><div id="head-m-l" class="mini-meter-fill"></div></div>
+                <div class="mini-meter-col"><div id="head-m-r" class="mini-meter-fill"></div></div>
+            </div>
+        </div>
         
-        <div id="header-meters" class="mini-meters" style="display:none; margin-left: 8px;">
-            <div class="mini-meter-col"><div id="head-m-l" class="mini-meter-fill"></div></div>
-            <div class="mini-meter-col"><div id="head-m-r" class="mini-meter-fill"></div></div>
+        <div id="status-stats-row" class="status-stats-row">
+            <span class="status-stat-item">Latency: <span id="stat-latency-pill">--</span></span>
+            <span class="status-stat-item">Loss: <span id="stat-loss-pill">--</span></span>
+            <span class="status-stat-item">Jitter: <span id="stat-jitter-pill">--</span></span>
         </div>
     </div>
 
@@ -438,20 +517,7 @@
                 </button>
             </div>
             
-            <div class="network-stats" id="network-stats" style="display:none">
-                <div class="network-stat">
-                    <span class="network-stat-label">Latency</span>
-                    <span class="network-stat-value" id="stat-latency">--</span>
-                </div>
-                <div class="network-stat">
-                    <span class="network-stat-label">Loss</span>
-                    <span class="network-stat-value" id="stat-loss">--</span>
-                </div>
-                <div class="network-stat">
-                    <span class="network-stat-label">Jitter</span>
-                    <span class="network-stat-value" id="stat-jitter">--</span>
-                </div>
-            </div>
+
         </div>
     </div>
 
@@ -1477,8 +1543,8 @@
                     log("WebSocket Closed", "warn");
                     
                     // Check if studio audio is still flowing
-                    const studioConnected = state.studioPC && 
-                        (state.studioPC.connectionState === 'connected' || 
+                    const studioConnected = state.studioPC &&
+                        (state.studioPC.connectionState === 'connected' ||
                          state.studioPC.connectionState === 'completed');
                     
                     if (studioConnected) {
@@ -1641,8 +1707,8 @@
                 }
                 
                 // Only initiate if we have lower ID (prevents duplicate connections)
-                if (state.myId < peer.id && 
-                    !state.voicePeerConnections.has(peer.id) && 
+                if (state.myId < peer.id &&
+                    !state.voicePeerConnections.has(peer.id) &&
                     !state.pendingPeerConnections.has(peer.id)) {
                     
                     // Stagger connections to avoid overwhelming signaling
@@ -1680,19 +1746,35 @@
                 let displayName = isMe ? state.myUserName + " (You)" : user.name;
 
                 // Build left section
-                let leftArea = '';
+                // Build roster item
                 if (isSender) {
-                    leftArea = `
-                        <div class="meter-column-fixed">
-                            <div class="mini-meters">
-                                <div class="mini-meter-col"><div id="ml-${user.id}" class="mini-meter-fill"></div></div>
-                                <div class="mini-meter-col"><div id="mr-${user.id}" class="mini-meter-fill"></div></div>
+                    // Sender with horizontal meters
+                    const el = document.createElement('div');
+                    el.className = 'roster-item';
+                    el.innerHTML = `
+                        <div class="roster-left-sender">
+                            <div class="roster-name-container">
+                                <span class="${nameClass}">${displayName}${statusBadge}</span>
                             </div>
-                        </div>`;
-                } else {
-                    const muteClass = (user.isMusicEnabled !== false) ? 'active' : 'inactive';
-                    leftArea = `<div class="icon-box ${muteClass}">${ICONS.HEADPHONES}</div>`;
+                            <div class="roster-meters-horizontal">
+                                <div class="roster-meter-bar">
+                                    <div id="ml-${user.id}" class="roster-meter-fill-horizontal"></div>
+                                </div>
+                                <div class="roster-meter-bar">
+                                    <div id="mr-${user.id}" class="roster-meter-fill-horizontal"></div>
+                                </div>
+                            </div>
+                        </div>
+                        <div id="status-icon-${user.id}" class="icon-box ${statusClass}">${ICONS.MIC}</div>
+                    `;
+                    ui.rosterList.appendChild(el);
+                    continue; // Skip normal rendering below
                 }
+                
+                // Non-sender (receiver)
+                let leftArea = '';
+                const muteClass = (user.isMusicEnabled !== false) ? 'active' : 'inactive';
+                leftArea = `<div class="icon-box ${muteClass}">${ICONS.HEADPHONES}</div>`;
 
                 // Status indicator
                 const isActive = isSender ? user.isMusicEnabled : (user.isMicEnabled !== false);
@@ -1956,11 +2038,11 @@
             ui.qualityBadge.className = `status-quality ${qualityClass}`;
             
             // Update network stats
-            document.getElementById('stat-latency').innerText = 
+            document.getElementById('stat-latency').innerText =
                 q.latency > 0 ? `${q.latency.toFixed(0)}ms` : '--';
-            document.getElementById('stat-loss').innerText = 
+            document.getElementById('stat-loss').innerText =
                 q.packetLoss > 0 ? `${q.packetLoss.toFixed(1)}%` : '--';
-            document.getElementById('stat-jitter').innerText = 
+            document.getElementById('stat-jitter').innerText =
                 q.jitter > 0 ? `${q.jitter.toFixed(0)}ms` : '--';
         }
     }
@@ -2033,6 +2115,11 @@
 
     ui.btnConnect.addEventListener('click', async () => {
         if (!state.isConnected) {
+            // Show console immediately
+            if (ui.consoleCard) {
+                ui.consoleCard.style.display = 'flex';
+            }
+            
             await ConnectionManager.connect();
         }
     });
@@ -2092,9 +2179,14 @@
     });
 
     // Auto-expand on scroll near bottom
+    let lastScrollY = window.scrollY;
     let scrollTimeout;
+    
     window.addEventListener('scroll', () => {
         if (!state.isConnected) return;
+        
+        const currentScrollY = window.scrollY;
+        const isScrollingUp = currentScrollY < lastScrollY;
         
         clearTimeout(scrollTimeout);
         scrollTimeout = setTimeout(() => {
@@ -2102,17 +2194,24 @@
             const scrollTop = window.scrollY;
             const clientHeight = window.innerHeight;
             
-            if (scrollTop + clientHeight >= scrollHeight - 50) {
+            // Hide when scrolling up (not at bottom)
+            if (isScrollingUp && scrollTop < scrollHeight - clientHeight - 100) {
+                ui.disconnectPanel.classList.remove('expanded');
+            }
+            // Show when near bottom
+            else if (scrollTop + clientHeight >= scrollHeight - 50) {
                 ui.disconnectPanel.classList.add('expanded');
             }
         }, 100);
+        
+        lastScrollY = currentScrollY;
     });
 
     ui.btnTalk.addEventListener('click', () => {
         if (state.isRepairing) {
             log("[FIX] 🔧 Manual Repair Initiated", "success");
             state.voicePeerConnections.forEach((session, peerId) => {
-                if (session.pc.connectionState === 'failed' || 
+                if (session.pc.connectionState === 'failed' ||
                     session.pc.connectionState === 'disconnected') {
                     PeerConnectionManager.restartIce(peerId);
                 }
@@ -2193,3 +2292,5 @@
 </script>
 </body>
 </html>
+
+
