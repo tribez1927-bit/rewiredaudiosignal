@@ -257,8 +257,30 @@
         }
 
         /* Slider */
-        .slider-row { display: flex; align-items: center; gap: 16px; }
+        .slider-row { display: flex; align-items: center; gap: 12px; }
         .voice-slider-row { margin-top: 8px; }
+
+        .slider-btn {
+            width: 36px; height: 36px; min-width: 36px; border-radius: 50%;
+            background: var(--input-bg); border: none; color: var(--text-sub);
+            display: flex; align-items: center; justify-content: center;
+            cursor: pointer; transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative; padding: 0;
+        }
+        .slider-btn svg { width: 18px; height: 18px; fill: currentColor; }
+        .slider-btn:hover { background: #3a3a3c; }
+        .slider-btn.active { background: var(--accent); color: white; box-shadow: 0 2px 8px var(--accent-dim); }
+        .slider-btn.muted-state { background: var(--input-bg); color: var(--danger); box-shadow: none; border: 1px solid var(--danger); }
+        .slider-btn.repairing { background: var(--warn); color: black; }
+        .slider-btn.repairing::after {
+            content: '';
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+            border: 2px solid var(--warn);
+            animation: ripple 1s infinite;
+        }
         input[type=range] {
             -webkit-appearance: none;
             width: 100%;
@@ -279,32 +301,6 @@
         input[type=range]::-webkit-slider-thumb:active { transform: scale(1.2); }
 
         /* Toggles */
-        .toggles-row { display: flex; justify-content: space-around; padding: 0 10px; }
-        
-        .circle-btn {
-            width: 64px; height: 64px; border-radius: 50%;
-            background: var(--input-bg); border: none; color: var(--text-sub);
-            display: flex; flex-direction: column; align-items: center; justify-content: center;
-            cursor: pointer; transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-            position: relative;
-        }
-        .circle-btn svg { width: 26px; height: 26px; fill: currentColor; margin-bottom: 4px; }
-        .circle-btn span { font-size: 0.7rem; font-weight: 600; }
-        
-        .circle-btn:hover { background: #3a3a3c; }
-        .circle-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-        .circle-btn.active { background: var(--accent); color: white; box-shadow: 0 4px 15px var(--accent-dim); }
-        .circle-btn.muted-state { background: var(--input-bg); color: var(--danger); box-shadow: none; border: 1px solid var(--danger); }
-        .circle-btn.repairing { background: var(--warn); color: black; }
-        .circle-btn.repairing::after {
-            content: '';
-            position: absolute;
-            width: 100%;
-            height: 100%;
-            border-radius: 50%;
-            border: 2px solid var(--warn);
-            animation: ripple 1s infinite;
-        }
         
         @keyframes ripple {
             0% { transform: scale(1); opacity: 1; }
@@ -408,10 +404,6 @@
         <span id="bitrate" class="status-bitrate" style="display:none">0 kbps</span>
         <span id="quality-badge" class="status-quality" style="display:none">Good</span>
         
-        <div id="header-meters" class="mini-meters" style="display:none; margin-left: 8px;">
-            <div class="mini-meter-col"><div id="head-m-l" class="mini-meter-fill"></div></div>
-            <div class="mini-meter-col"><div id="head-m-r" class="mini-meter-fill"></div></div>
-        </div>
         <div class="network-stats" id="network-stats" style="display:none">
             <div class="network-stat">
                 <span class="network-stat-label">Latency</span>
@@ -444,27 +436,19 @@
             <div class="slider-row">
                 <svg width="18" height="18" fill="#666" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 9v6h4l5 5V4L7 9H3z"/></svg>
                 <input type="range" id="vol-slider" min="0" max="1" step="0.01" value="0.8" aria-label="Volume">
-                <svg width="18" height="18" fill="#666" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 9v6h4l5 5V4L7 9H3zM16.5 12c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></svg>
+                <button id="btn-mute" class="slider-btn active" aria-label="Toggle mute">
+                    <svg id="icon-vol" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 9v6h4l5 5V4L7 9H3zM16.5 12c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></svg>
+                    <svg id="icon-mute" viewBox="0 0 24 24" style="display:none" aria-hidden="true"><path d="M19 12c0 1.72-1.02 3.22-2.5 4v2.15c2.34-.99 4-3.32 4-6.15 0-2.83-1.66-5.16-4-6.15V8c1.48.78 2.5 2.28 2.5 4zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06c1.38-.31 2.63-.95 3.69-1.81L19.73 21 21 19.73 4.27 3zM12 4L9.91 6.09 12 8.18V4z"/></svg>
+                </button>
             </div>
 
             <div class="slider-row voice-slider-row">
                 <svg width="18" height="18" fill="#666" viewBox="0 0 24 24" aria-hidden="true"><path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/></svg>
                 <input type="range" id="voice-vol-slider" min="0" max="1" step="0.01" value="0.8" aria-label="Voice Volume">
-                <svg width="18" height="18" fill="#666" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/><path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/></svg>
-            </div>
-
-            <div class="toggles-row">
-                <button id="btn-mute" class="circle-btn active" aria-label="Toggle mute">
-                    <svg id="icon-vol" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77zm-4 0h-2.5l-5 5H0v6h2.5l5 5H10V3.23z"/></svg>
-                    <svg id="icon-mute" viewBox="0 0 24 24" style="display:none" aria-hidden="true"><path d="M19 12c0 1.72-1.02 3.22-2.5 4v2.15c2.34-.99 4-3.32 4-6.15 0-2.83-1.66-5.16-4-6.15V8c1.48.78 2.5 2.28 2.5 4zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06c1.38-.31 2.63-.95 3.69-1.81L19.73 21 21 19.73 4.27 3zM12 4L9.91 6.09 12 8.18V4z"/></svg>
-                    <span>Mute</span>
-                </button>
-
-                <button id="btn-talk" class="circle-btn" aria-label="Push to talk">
+                <button id="btn-talk" class="slider-btn" aria-label="Push to talk">
                     <svg id="icon-talk-off" viewBox="0 0 24 24" aria-hidden="true"><path d="M19 11h-1.7c0 .74-.16 1.43-.43 2.05l1.23 1.23c.56-.98.9-2.09.9-3.28zm-4.02.17c0-.06.02-.11.02-.17V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/><path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/></svg>
                     <svg id="icon-talk-on" viewBox="0 0 24 24" style="display:none;" aria-hidden="true"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/><path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/></svg>
                     <svg id="icon-repair" viewBox="0 0 24 24" style="display:none;" aria-hidden="true"><path d="M22.7 19l-9.1-9.1c.9-2.3.4-5-1.5-6.9-2-2-5-2.4-7.4-1.3L9 6 6 9 1.6 4.7C.4 7.1.9 10.1 2.9 12.1c1.9 1.9 4.6 2.4 6.9 1.5l9.1 9.1c.4.4 1 .4 1.4 0l2.3-2.3c.5-.4.5-1.1.1-1.4z"/></svg>
-                    <span>Talk</span>
                 </button>
             </div>
             
@@ -590,7 +574,6 @@
         statusDot: document.getElementById('status-dot'),
         bitrateEl: document.getElementById('bitrate'),
         qualityBadge: document.getElementById('quality-badge'),
-        headerMeters: document.getElementById('header-meters'),
         connectedAs: document.getElementById('connected-as'),
         connectedAsName: document.getElementById('connected-as-name'),
         btnConnect: document.getElementById('btn-connect'),
@@ -722,43 +705,6 @@
             }
         }
 
-        static startHeaderVisuals(stream) {
-            if (!state.audioCtx) return;
-            
-            try {
-                const src = state.audioCtx.createMediaStreamSource(stream);
-                const analyzer = state.audioCtx.createAnalyser();
-                analyzer.fftSize = 256;
-                analyzer.smoothingTimeConstant = 0.8;
-                src.connect(analyzer);
-
-                const data = new Uint8Array(analyzer.frequencyBinCount);
-                const updateMeters = () => {
-                    if (!stream.active) return;
-                    
-                    analyzer.getByteFrequencyData(data);
-                    let sum = 0;
-                    for (let i = 0; i < data.length; i++) sum += data[i];
-                    const avg = sum / data.length;
-                    
-                    const percentage = Math.min(100, (avg / 50) * 100);
-                    const headL = document.getElementById('head-m-l');
-                    const headR = document.getElementById('head-m-r');
-                    
-                    if (headL && headR) {
-                        headL.style.height = percentage + "%";
-                        headR.style.height = percentage + "%";
-                    }
-                    
-                    requestAnimationFrame(updateMeters);
-                };
-                
-                updateMeters();
-            } catch (e) {
-                log(`Visual Error: ${e.message}`, "err");
-            }
-        }
-
         static monitorAndRouteAudio(stream, label, rosterId, shouldRoute = true, targetGain = null) {
             if (!state.audioCtx || !state.masterGain) return;
 
@@ -789,25 +735,15 @@
                     for (let i = 0; i < data.length; i++) sum += data[i];
                     const avg = sum / data.length;
                     
-                    // Update roster meters
+                    // Update roster meters (logarithmic scale)
                     if (rosterId) {
                         const fillL = document.getElementById(`ml-${rosterId}`);
                         const fillR = document.getElementById(`mr-${rosterId}`);
                         if (fillL && fillR) {
-                            const percentage = Math.min(100, (avg / 50) * 100);
+                            const dB = avg > 0 ? 20 * Math.log10(avg / 255) : -60;
+                            const percentage = Math.min(100, Math.max(0, ((dB + 60) / 60) * 100));
                             fillL.style.width = percentage + "%";
                             fillR.style.width = percentage + "%";
-                        }
-                    }
-
-                    // Also update header meters for studio stream
-                    if (label === "Studio Stream") {
-                        const headL = document.getElementById('head-m-l');
-                        const headR = document.getElementById('head-m-r');
-                        if (headL && headR) {
-                            const pct = Math.min(100, (avg / 50) * 100);
-                            headL.style.height = pct + "%";
-                            headR.style.height = pct + "%";
                         }
                     }
 
@@ -1906,9 +1842,9 @@
             
             // Mute button
             if (isActuallySilent) {
-                ui.btnMute.className = "circle-btn muted-state";
+                ui.btnMute.className = "slider-btn muted-state";
             } else {
-                ui.btnMute.className = "circle-btn active";
+                ui.btnMute.className = "slider-btn active";
             }
             
             document.getElementById('icon-vol').style.display = isActuallySilent ? "none" : "block";
@@ -1920,12 +1856,12 @@
             const talkIconFix = document.getElementById('icon-repair');
             
             if (state.isRepairing) {
-                ui.btnTalk.className = "circle-btn repairing";
+                ui.btnTalk.className = "slider-btn repairing";
                 talkIconOff.style.display = "none";
                 talkIconOn.style.display = "none";
                 talkIconFix.style.display = "block";
             } else {
-                ui.btnTalk.className = state.isTalking ? "circle-btn active" : "circle-btn";
+                ui.btnTalk.className = state.isTalking ? "slider-btn active" : "slider-btn";
                 ui.btnTalk.disabled = !state.localVoiceStream;
                 talkIconFix.style.display = "none";
                 talkIconOff.style.display = state.isTalking ? "none" : "block";
@@ -1944,7 +1880,6 @@
                 ui.statusDot.className = "status-dot on";
                 ui.bitrateEl.style.display = "block";
                 ui.qualityBadge.style.display = "block";
-                ui.headerMeters.style.display = "flex";
                 ui.networkStats.style.display = "flex";
                 ui.connectedAs.style.display = "block";
                 ui.connectedAsName.innerText = state.myUserName;
@@ -1965,7 +1900,6 @@
                 ui.statusDot.className = "status-dot";
                 ui.bitrateEl.style.display = "none";
                 ui.qualityBadge.style.display = "none";
-                ui.headerMeters.style.display = "none";
                 ui.networkStats.style.display = "none";
                 ui.connectedAs.style.display = "none";
                 ui.disconnectPanel.style.display = "none";
@@ -2062,16 +1996,26 @@
             state.hasRenamedToMonitor = false;
             state.isRepairing = false;
             state.isTalking = false;
+            state.isMuted = false;
+            state.broadcasterId = null;
             state.reconnectAttempts = 0;
-            
+            state.connectionQuality = { bitrate: 0, latency: 0, packetLoss: 0, jitter: 0 };
+
             if (state.verificationTimer) {
                 clearTimeout(state.verificationTimer);
                 state.verificationTimer = null;
             }
-            
+
             state.nameWasEmpty = false;
             state.currentRoster = [];
-            
+
+            // Reset button visuals to match cleared state
+            document.getElementById('icon-vol').style.display = "block";
+            document.getElementById('icon-mute').style.display = "none";
+            document.getElementById('icon-talk-off').style.display = "block";
+            document.getElementById('icon-talk-on').style.display = "none";
+            document.getElementById('icon-repair').style.display = "none";
+
             // Update UI
             UIManager.setUIState('disconnected');
             log("✅ Disconnected", "info");
